@@ -3,6 +3,7 @@
 ## Project Overview
 
 **Project Name:** cocu
+**Project Description:** Cost Curve is a simple mobile app to track price change in usual purchased items at home.
 **Framework:** Flutter
 **Database:** Local Database (e.g., SQLite)
 **Authentication:** PIN
