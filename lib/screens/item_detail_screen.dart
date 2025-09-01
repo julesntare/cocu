@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import 'dart:math' as math;
 import '../models/item.dart';
 import '../models/price_history.dart';
 import '../services/database_service.dart';
@@ -246,6 +247,82 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     }
   }
 
+  Map<String, dynamic> _getPurchaseConsistencyAnalysis() {
+    if (_priceHistory.length < 3) {
+      return {
+        'summary': 'Not enough data',
+        'description': 'Need at least 3 entries to analyze patterns',
+        'color': Colors.grey,
+        'icon': Icons.help_outline,
+      };
+    }
+
+    // Calculate intervals between purchases
+    List<int> intervals = [];
+    for (int i = 1; i < _priceHistory.length; i++) {
+      final daysDiff = _priceHistory[i]
+          .recordedAt
+          .difference(_priceHistory[i - 1].recordedAt)
+          .inDays;
+      if (daysDiff > 0) intervals.add(daysDiff);
+    }
+
+    if (intervals.isEmpty) {
+      return {
+        'summary': 'No time gaps',
+        'description': 'All entries on same days',
+        'color': Colors.orange,
+        'icon': Icons.schedule,
+      };
+    }
+
+    // Calculate average and standard deviation
+    final average = intervals.reduce((a, b) => a + b) / intervals.length;
+    final variance = intervals
+            .map((x) => (x - average) * (x - average))
+            .reduce((a, b) => a + b) /
+        intervals.length;
+    final standardDeviation = math.sqrt(variance);
+    final coefficientOfVariation = standardDeviation / average;
+
+    // Determine consistency
+    String summary;
+    String description;
+    Color color;
+    IconData icon;
+
+    if (coefficientOfVariation < 0.3) {
+      summary = 'Very Consistent';
+      description = 'Purchased every ${average.round()} days on average';
+      color = Colors.green;
+      icon = Icons.trending_up;
+    } else if (coefficientOfVariation < 0.6) {
+      summary = 'Moderately Consistent';
+      description = 'Some variation in purchase timing';
+      color = Colors.blue;
+      icon = Icons.show_chart;
+    } else if (coefficientOfVariation < 1.0) {
+      summary = 'Inconsistent';
+      description = 'Irregular purchase pattern';
+      color = Colors.orange;
+      icon = Icons.trending_flat;
+    } else {
+      summary = 'Very Inconsistent';
+      description = 'Highly irregular purchases';
+      color = Colors.red;
+      icon = Icons.trending_down;
+    }
+
+    return {
+      'summary': summary,
+      'description': description,
+      'color': color,
+      'icon': icon,
+      'average': average.round(),
+      'intervals': intervals,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_currentItem == null) {
@@ -367,6 +444,76 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
+
+                // Purchase Consistency Analysis
+                if (_priceHistory.length >= 2)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Builder(
+                        builder: (context) {
+                          final analysis = _getPurchaseConsistencyAnalysis();
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    analysis['icon'] as IconData,
+                                    color: analysis['color'] as Color,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const Text(
+                                    'Purchase Pattern',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: (analysis['color'] as Color)
+                                          .withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: analysis['color'] as Color,
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      analysis['summary'] as String,
+                                      style: TextStyle(
+                                        color: analysis['color'] as Color,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                analysis['description'] as String,
+                                style: TextStyle(
+                                  color: Colors.grey[600],
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 16),
 
                 // Price Chart
