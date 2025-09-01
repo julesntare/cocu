@@ -214,7 +214,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final prefix = change >= 0 ? '+' : '';
     final formattedChange = NumberFormat('#,###').format(change.abs().round());
 
-    return '${prefix}${formattedChange} Rwf (${prefix}${changePercent.toStringAsFixed(1)}%)';
+    return '$prefix$formattedChange Rwf ($prefix${changePercent.toStringAsFixed(1)}%)';
   }
 
   Color _getPriceChangeColor() {
@@ -225,6 +225,25 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final change = lastPrice - firstPrice;
 
     return change >= 0 ? Colors.red : Colors.green;
+  }
+
+  Map<String, String> _getDateWithDaysDifference(
+      DateTime date, DateTime? previousDate) {
+    final dateStr = DateFormat('MMM dd, yyyy').format(date);
+
+    if (previousDate == null) {
+      return {'date': dateStr, 'difference': '(Initial)'};
+    }
+
+    final daysDifference = date.difference(previousDate).inDays;
+
+    if (daysDifference == 0) {
+      return {'date': dateStr, 'difference': '(Same day)'};
+    } else if (daysDifference == 1) {
+      return {'date': dateStr, 'difference': '(Next day)'};
+    } else {
+      return {'date': dateStr, 'difference': '(After $daysDifference days)'};
+    }
   }
 
   @override
@@ -451,41 +470,70 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         if (_priceHistory.isEmpty)
                           const Text('No price history available')
                         else
-                          ..._priceHistory.reversed.map((history) => Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            DateFormat('MMM dd, yyyy - HH:mm')
-                                                .format(history.recordedAt),
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.bold),
-                                          ),
-                                          if (history.note != null)
+                          ...(_priceHistory.reversed
+                              .toList()
+                              .asMap()
+                              .entries
+                              .map((entry) {
+                            final index = entry.key;
+                            final history = entry.value;
+                            final reversedIndex =
+                                _priceHistory.length - 1 - index;
+                            final previousDate = reversedIndex > 0
+                                ? _priceHistory[reversedIndex - 1].recordedAt
+                                : null;
+
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
                                             Text(
-                                              history.note!,
-                                              style: TextStyle(
-                                                  color: Colors.grey[600]),
+                                              _getDateWithDaysDifference(
+                                                  history.recordedAt,
+                                                  previousDate)['date']!,
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold),
                                             ),
-                                        ],
-                                      ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _getDateWithDaysDifference(
+                                                  history.recordedAt,
+                                                  previousDate)['difference']!,
+                                              style: TextStyle(
+                                                fontStyle: FontStyle.italic,
+                                                color: Colors.blue[600],
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        if (history.note != null)
+                                          Text(
+                                            history.note!,
+                                            style: TextStyle(
+                                                color: Colors.grey[600]),
+                                          ),
+                                      ],
                                     ),
-                                    Text(
-                                      '${NumberFormat('#,###').format(history.price.round())} Rwf',
-                                      style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                  ),
+                                  Text(
+                                    '${NumberFormat('#,###').format(history.price.round())} Rwf',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
                                     ),
-                                  ],
-                                ),
-                              )),
+                                  ),
+                                ],
+                              ),
+                            );
+                          })),
                       ],
                     ),
                   ),

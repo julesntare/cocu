@@ -21,6 +21,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
   final DatabaseService _databaseService = DatabaseService();
 
   bool _isLoading = false;
+  DateTime? _selectedDate;
 
   @override
   void initState() {
@@ -31,6 +32,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
       _priceController.text =
           NumberFormat('#,###').format(widget.item!.currentPrice.round());
       _descriptionController.text = widget.item!.description ?? '';
+      _selectedDate = widget.item!.createdAt;
     }
   }
 
@@ -51,6 +53,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
     try {
       final now = DateTime.now();
+      final createdDate = widget.item?.createdAt ?? _selectedDate ?? now;
       final item = Item(
         id: widget.item?.id,
         name: _nameController.text.trim(),
@@ -58,7 +61,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
         description: _descriptionController.text.trim().isEmpty
             ? null
             : _descriptionController.text.trim(),
-        createdAt: widget.item?.createdAt ?? now,
+        createdAt: createdDate,
         updatedAt: now,
       );
 
@@ -187,6 +190,39 @@ class _AddItemScreenState extends State<AddItemScreen> {
               ),
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
+            ),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: () async {
+                final date = await showDatePicker(
+                  context: context,
+                  initialDate: _selectedDate ?? DateTime.now(),
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now(),
+                );
+                if (date != null) {
+                  setState(() {
+                    _selectedDate = date;
+                  });
+                }
+              },
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Purchase Date (Optional)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.calendar_today),
+                  suffixIcon: Icon(Icons.arrow_drop_down),
+                ),
+                child: Text(
+                  _selectedDate != null
+                      ? DateFormat('MMM dd, yyyy').format(_selectedDate!)
+                      : 'Select date (defaults to today)',
+                  style: TextStyle(
+                    color:
+                        _selectedDate != null ? Colors.black : Colors.grey[600],
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 32),
             ElevatedButton(
