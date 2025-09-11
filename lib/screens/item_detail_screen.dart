@@ -58,7 +58,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
   Future<void> _addPriceEntry() async {
     final priceController = TextEditingController();
-    final noteController = TextEditingController();
     DateTime selectedDate = DateTime.now();
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -89,14 +88,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     );
                   }),
                 ],
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: noteController,
-                decoration: const InputDecoration(
-                  labelText: 'Note (Optional)',
-                ),
-                textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 16),
               Row(
@@ -133,7 +124,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 if (priceController.text.isNotEmpty) {
                   Navigator.pop(context, {
                     'price': priceController.text,
-                    'note': noteController.text,
                     'date': selectedDate,
                   });
                 }
@@ -148,14 +138,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       try {
         final priceText = result['price']!;
         final price = double.parse(priceText.replaceAll(',', ''));
-        final note = result['note']!.trim();
         final recordedAt = result['date'] as DateTime;
 
         final priceHistory = PriceHistory(
           itemId: _currentItem!.id!,
           price: price,
           recordedAt: recordedAt,
-          note: note.isEmpty ? null : note,
+          createdAt: DateTime.now(),
+          entryType: 'manual',
         );
 
         await _databaseService.insertPriceHistory(priceHistory);
@@ -189,8 +179,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   List<FlSpot> _generateChartData() {
     if (_priceHistory.length < 2) return [];
 
-    return _priceHistory.asMap().entries.map((entry) {
-      return FlSpot(entry.key.toDouble(), entry.value.price);
+    // Filter out automatic entries from chart (these are automatic entries when item price is updated)
+    final chartHistory =
+        _priceHistory.where((entry) => entry.entryType == 'manual').toList();
+
+    if (chartHistory.length < 2) return [];
+
+    // Sort price history by date to ensure proper chronological order
+    final sortedHistory = List<PriceHistory>.from(chartHistory)
+      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
+
+    // Use the first entry as the baseline date
+    final baselineDate = sortedHistory.first.recordedAt;
+
+    return sortedHistory.map((entry) {
+      // Calculate days since the first entry for X-axis positioning
+      final daysSinceBaseline =
+          entry.recordedAt.difference(baselineDate).inDays.toDouble();
+      return FlSpot(daysSinceBaseline, entry.price);
     }).toList();
   }
 
@@ -204,11 +210,50 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     return _priceHistory.map((e) => e.price).reduce((a, b) => a > b ? a : b);
   }
 
-  String _getPriceChangeText() {
-    if (_priceHistory.length < 2) return '';
+  // Get the date range in days for the chart X-axis
+  double get _maxDays {
+    if (_priceHistory.length < 2) return 0;
 
-    final firstPrice = _priceHistory.first.price;
-    final lastPrice = _priceHistory.last.price;
+    // Filter out automatic entries from chart calculation
+    final chartHistory =
+        _priceHistory.where((entry) => entry.entryType == 'manual').toList();
+
+    if (chartHistory.length < 2) return 0;
+
+    final sortedHistory = List<PriceHistory>.from(chartHistory)
+      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
+    final firstDate = sortedHistory.first.recordedAt;
+    final lastDate = sortedHistory.last.recordedAt;
+    return lastDate.difference(firstDate).inDays.toDouble();
+  }
+
+  // Get date from days since baseline for chart labels
+  DateTime _getDateFromDays(double days) {
+    if (_priceHistory.isEmpty) return DateTime.now();
+
+    // Filter out automatic entries from chart calculation
+    final chartHistory =
+        _priceHistory.where((entry) => entry.entryType == 'manual').toList();
+
+    if (chartHistory.isEmpty) return DateTime.now();
+
+    final sortedHistory = List<PriceHistory>.from(chartHistory)
+      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
+    final baselineDate = sortedHistory.first.recordedAt;
+    return baselineDate.add(Duration(days: days.round()));
+  }
+
+  String _getPriceChangeText() {
+    // Filter out automatic entries and sort by date
+    final filteredHistory = _priceHistory
+        .where((entry) => entry.entryType == 'manual')
+        .toList()
+      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
+
+    if (filteredHistory.length < 2) return '';
+
+    final firstPrice = filteredHistory.first.price; // Oldest entry
+    final lastPrice = filteredHistory.last.price; // Newest entry
     final change = lastPrice - firstPrice;
     final changePercent = (change / firstPrice) * 100;
 
@@ -219,10 +264,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   }
 
   Color _getPriceChangeColor() {
-    if (_priceHistory.length < 2) return Colors.grey;
+    // Filter out automatic entries and sort by date
+    final filteredHistory = _priceHistory
+        .where((entry) => entry.entryType == 'manual')
+        .toList()
+      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
 
-    final firstPrice = _priceHistory.first.price;
-    final lastPrice = _priceHistory.last.price;
+    if (filteredHistory.length < 2) return Colors.grey;
+
+    final firstPrice = filteredHistory.first.price; // Oldest entry
+    final lastPrice = filteredHistory.last.price; // Newest entry
     final change = lastPrice - firstPrice;
 
     return change >= 0 ? Colors.red : Colors.green;
@@ -233,7 +284,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final dateStr = DateFormat('MMM dd, yyyy').format(date);
 
     if (previousDate == null) {
-      return {'date': dateStr, 'difference': '(Initial)'};
+      return {'date': dateStr, 'difference': '(Initial Price)'};
     }
 
     final daysDifference = date.difference(previousDate).inDays;
@@ -248,7 +299,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   }
 
   Map<String, dynamic> _getPurchaseConsistencyAnalysis() {
-    if (_priceHistory.length < 3) {
+    // Filter out automatic entries and sort by date
+    final filteredHistory = _priceHistory
+        .where((entry) => entry.entryType == 'manual')
+        .toList()
+      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
+
+    if (filteredHistory.length < 3) {
       return {
         'summary': 'Not enough data',
         'description': 'Need at least 3 entries to analyze patterns',
@@ -259,10 +316,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
     // Calculate intervals between purchases
     List<int> intervals = [];
-    for (int i = 1; i < _priceHistory.length; i++) {
-      final daysDiff = _priceHistory[i]
+    for (int i = 1; i < filteredHistory.length; i++) {
+      final daysDiff = filteredHistory[i]
           .recordedAt
-          .difference(_priceHistory[i - 1].recordedAt)
+          .difference(filteredHistory[i - 1].recordedAt)
           .inDays;
       if (daysDiff > 0) intervals.add(daysDiff);
     }
@@ -423,7 +480,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 ),
                               ],
                             ),
-                            if (_priceHistory.length >= 2)
+                            if (_priceHistory
+                                    .where(
+                                        (entry) => entry.entryType == 'manual')
+                                    .length >=
+                                2)
                               Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
@@ -447,7 +508,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 const SizedBox(height: 16),
 
                 // Purchase Consistency Analysis
-                if (_priceHistory.length >= 2)
+                if (_priceHistory
+                        .where((entry) => entry.entryType == 'manual')
+                        .length >=
+                    2)
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -517,7 +581,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 const SizedBox(height: 16),
 
                 // Price Chart
-                if (_priceHistory.length >= 2)
+                if (_priceHistory
+                        .where((entry) => entry.entryType == 'manual')
+                        .length >=
+                    2)
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(16),
@@ -541,19 +608,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                   bottomTitles: AxisTitles(
                                     sideTitles: SideTitles(
                                       showTitles: true,
+                                      reservedSize: 30,
                                       getTitlesWidget: (value, meta) {
-                                        if (value.toInt() >= 0 &&
-                                            value.toInt() <
-                                                _priceHistory.length) {
-                                          return Text(
-                                            DateFormat('MM/dd').format(
-                                                _priceHistory[value.toInt()]
-                                                    .recordedAt),
-                                            style:
-                                                const TextStyle(fontSize: 10),
-                                          );
-                                        }
-                                        return const Text('');
+                                        // Convert days back to date for display
+                                        final date = _getDateFromDays(value);
+                                        return Text(
+                                          DateFormat('MM/dd').format(date),
+                                          style: const TextStyle(fontSize: 10),
+                                        );
                                       },
                                     ),
                                   ),
@@ -577,7 +639,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 ),
                                 borderData: FlBorderData(show: true),
                                 minX: 0,
-                                maxX: (_priceHistory.length - 1).toDouble(),
+                                maxX: _maxDays,
                                 minY: _minPrice * 0.9,
                                 maxY: _maxPrice * 1.1,
                                 lineBarsData: [
@@ -616,18 +678,38 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                         const SizedBox(height: 16),
                         if (_priceHistory.isEmpty)
                           const Text('No price history available')
+                        else if (_priceHistory
+                            .where((entry) => entry.entryType == 'manual')
+                            .isEmpty)
+                          const Text('No manual price entries yet')
                         else
-                          ...(_priceHistory.reversed
+                          ...(_priceHistory
+                                  .where((entry) => entry.entryType == 'manual')
+                                  .toList()
+                                ..sort((a, b) =>
+                                    a.recordedAt.compareTo(b.recordedAt)))
+                              .reversed
                               .toList()
                               .asMap()
                               .entries
                               .map((entry) {
-                            final index = entry.key;
                             final history = entry.value;
-                            final reversedIndex =
-                                _priceHistory.length - 1 - index;
-                            final previousDate = reversedIndex > 0
-                                ? _priceHistory[reversedIndex - 1].recordedAt
+                            final sortedHistory = _priceHistory
+                                .where((e) => e.entryType == 'manual')
+                                .toList()
+                              ..sort((a, b) =>
+                                  a.recordedAt.compareTo(b.recordedAt));
+
+                            // Find the current entry's position in chronologically sorted list
+                            final chronologicalIndex = sortedHistory.indexWhere(
+                                (e) =>
+                                    e.recordedAt == history.recordedAt &&
+                                    e.price == history.price);
+
+                            // Get the chronologically previous entry (the one that came before this one in time)
+                            final previousDate = chronologicalIndex > 0
+                                ? sortedHistory[chronologicalIndex - 1]
+                                    .recordedAt
                                 : null;
 
                             return Padding(
@@ -661,12 +743,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                             ),
                                           ],
                                         ),
-                                        if (history.note != null)
-                                          Text(
-                                            history.note!,
-                                            style: TextStyle(
-                                                color: Colors.grey[600]),
-                                          ),
                                       ],
                                     ),
                                   ),
@@ -680,7 +756,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 ],
                               ),
                             );
-                          })),
+                          }),
                       ],
                     ),
                   ),

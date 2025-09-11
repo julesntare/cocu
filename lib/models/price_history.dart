@@ -3,14 +3,16 @@ class PriceHistory {
   final int itemId;
   final double price;
   final DateTime recordedAt;
-  final String? note;
+  final DateTime? createdAt;
+  final String entryType; // 'manual' or 'automatic'
 
   PriceHistory({
     this.id,
     required this.itemId,
     required this.price,
     required this.recordedAt,
-    this.note,
+    this.createdAt,
+    this.entryType = 'manual',
   });
 
   Map<String, dynamic> toMap() {
@@ -19,7 +21,9 @@ class PriceHistory {
       'item_id': itemId,
       'price': price,
       'recorded_at': recordedAt.toIso8601String(),
-      'note': note,
+      'created_at':
+          createdAt?.toIso8601String() ?? recordedAt.toIso8601String(),
+      'entry_type': entryType,
     };
   }
 
@@ -29,7 +33,9 @@ class PriceHistory {
       itemId: map['item_id'],
       price: map['price'],
       recordedAt: DateTime.parse(map['recorded_at']),
-      note: map['note'],
+      createdAt:
+          map['created_at'] != null ? DateTime.parse(map['created_at']) : null,
+      entryType: map['entry_type'] ?? 'manual',
     );
   }
 }

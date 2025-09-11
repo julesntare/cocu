@@ -19,7 +19,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'cocu.db');
     return await openDatabase(
       path,
-      version: 2, // Increment version to trigger migration
+      version: 4, // Increment version to remove note field
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -43,7 +43,8 @@ class DatabaseService {
         item_id INTEGER NOT NULL,
         price REAL NOT NULL,
         recorded_at TEXT NOT NULL,
-        note TEXT,
+        created_at TEXT NOT NULL,
+        entry_type TEXT NOT NULL DEFAULT 'manual',
         FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
       )
     ''');
@@ -74,6 +75,60 @@ class DatabaseService {
       await db.execute('DROP TABLE items');
       await db.execute('ALTER TABLE items_new RENAME TO items');
     }
+
+    if (oldVersion < 3) {
+      // Add new fields to price_history table
+      try {
+        await db
+            .execute('ALTER TABLE price_history ADD COLUMN created_at TEXT');
+        await db.execute(
+            'ALTER TABLE price_history ADD COLUMN entry_type TEXT DEFAULT "manual"');
+
+        // Update existing records to set proper values
+        await db.execute('''
+          UPDATE price_history 
+          SET created_at = recorded_at, 
+              entry_type = CASE 
+                WHEN note = "Price updated" THEN "automatic" 
+                ELSE "manual" 
+              END
+          WHERE created_at IS NULL
+        ''');
+      } catch (e) {
+        print('Error upgrading database to version 3: $e');
+      }
+    }
+
+    if (oldVersion < 4) {
+      // Remove note field from price_history table
+      try {
+        // Create new table without note field
+        await db.execute('''
+          CREATE TABLE price_history_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL,
+            price REAL NOT NULL,
+            recorded_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            entry_type TEXT NOT NULL DEFAULT 'manual',
+            FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
+          )
+        ''');
+
+        // Copy data without note field
+        await db.execute('''
+          INSERT INTO price_history_new (id, item_id, price, recorded_at, created_at, entry_type)
+          SELECT id, item_id, price, recorded_at, created_at, entry_type FROM price_history
+        ''');
+
+        // Drop old table and rename new one
+        await db.execute('DROP TABLE price_history');
+        await db
+            .execute('ALTER TABLE price_history_new RENAME TO price_history');
+      } catch (e) {
+        print('Error upgrading database to version 4: $e');
+      }
+    }
   }
 
   // Item CRUD operations
@@ -86,7 +141,8 @@ class DatabaseService {
       itemId: id,
       price: item.currentPrice,
       recordedAt: item.createdAt,
-      note: 'Initial price',
+      createdAt: DateTime.now(),
+      entryType: 'manual',
     ));
 
     return id;
@@ -124,12 +180,13 @@ class DatabaseService {
     // Get the old item to check if price changed
     final oldItem = await getItemById(item.id!);
     if (oldItem != null && oldItem.currentPrice != item.currentPrice) {
-      // Insert new price history if price changed
+      // Insert new price history with automatic entry type
       await insertPriceHistory(PriceHistory(
         itemId: item.id!,
         price: item.currentPrice,
         recordedAt: item.updatedAt,
-        note: 'Price updated',
+        createdAt: DateTime.now(),
+        entryType: 'automatic',
       ));
     }
 

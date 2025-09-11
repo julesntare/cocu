@@ -190,16 +190,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ],
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (history.note != null)
-              Text(
-                history.note!,
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-          ],
-        ),
         trailing: Text(
           '${NumberFormat('#,###').format(history.price.round())} Rwf',
           style: const TextStyle(
