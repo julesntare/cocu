@@ -189,14 +189,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final sortedHistory = List<PriceHistory>.from(chartHistory)
       ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
 
-    // Use the first entry as the baseline date
-    final baselineDate = sortedHistory.first.recordedAt;
-
-    return sortedHistory.map((entry) {
-      // Calculate days since the first entry for X-axis positioning
-      final daysSinceBaseline =
-          entry.recordedAt.difference(baselineDate).inDays.toDouble();
-      return FlSpot(daysSinceBaseline, entry.price);
+    // Use index-based positioning to show only dates with data
+    return sortedHistory.asMap().entries.map((entry) {
+      final index = entry.key;
+      final priceEntry = entry.value;
+      return FlSpot(index.toDouble(), priceEntry.price);
     }).toList();
   }
 
@@ -210,7 +207,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     return _priceHistory.map((e) => e.price).reduce((a, b) => a > b ? a : b);
   }
 
-  // Get the date range in days for the chart X-axis
+  // Get the number of data points for the chart X-axis
   double get _maxDays {
     if (_priceHistory.length < 2) return 0;
 
@@ -220,15 +217,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
     if (chartHistory.length < 2) return 0;
 
-    final sortedHistory = List<PriceHistory>.from(chartHistory)
-      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
-    final firstDate = sortedHistory.first.recordedAt;
-    final lastDate = sortedHistory.last.recordedAt;
-    return lastDate.difference(firstDate).inDays.toDouble();
+    // Return the number of data points minus 1 (since we start from 0)
+    return (chartHistory.length - 1).toDouble();
   }
 
-  // Get date from days since baseline for chart labels
-  DateTime _getDateFromDays(double days) {
+  // Get date from index for chart labels
+  DateTime _getDateFromDays(double index) {
     if (_priceHistory.isEmpty) return DateTime.now();
 
     // Filter out automatic entries from chart calculation
@@ -239,8 +233,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
     final sortedHistory = List<PriceHistory>.from(chartHistory)
       ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
-    final baselineDate = sortedHistory.first.recordedAt;
-    return baselineDate.add(Duration(days: days.round()));
+
+    // Get the actual date for this index position
+    final indexInt = index.round();
+    if (indexInt >= 0 && indexInt < sortedHistory.length) {
+      return sortedHistory[indexInt].recordedAt;
+    }
+
+    return DateTime.now();
   }
 
   String _getPriceChangeText() {
@@ -609,12 +609,38 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     sideTitles: SideTitles(
                                       showTitles: true,
                                       reservedSize: 30,
+                                      interval: 1,
                                       getTitlesWidget: (value, meta) {
-                                        // Convert days back to date for display
+                                        // Only show labels for actual data points to avoid overcrowding
+                                        final chartHistory = _priceHistory
+                                            .where((entry) =>
+                                                entry.entryType == 'manual')
+                                            .toList()
+                                          ..sort((a, b) => a.recordedAt
+                                              .compareTo(b.recordedAt));
+
+                                        // Show every nth label based on number of data points
+                                        final totalPoints = chartHistory.length;
+                                        int skipInterval = 1;
+                                        if (totalPoints > 8) {
+                                          skipInterval =
+                                              (totalPoints / 6).ceil();
+                                        }
+
+                                        final indexInt = value.round();
+                                        if (indexInt % skipInterval != 0 &&
+                                            indexInt != totalPoints - 1) {
+                                          return const SizedBox.shrink();
+                                        }
+
                                         final date = _getDateFromDays(value);
-                                        return Text(
-                                          DateFormat('MM/dd').format(date),
-                                          style: const TextStyle(fontSize: 10),
+                                        return Transform.rotate(
+                                          angle:
+                                              -0.3, // Slight rotation to fit better
+                                          child: Text(
+                                            DateFormat('MM/dd').format(date),
+                                            style: const TextStyle(fontSize: 9),
+                                          ),
                                         );
                                       },
                                     ),
@@ -623,8 +649,21 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     sideTitles: SideTitles(
                                       showTitles: true,
                                       getTitlesWidget: (value, meta) {
+                                        String formatPrice(double price) {
+                                          if (price >= 1000) {
+                                            double kValue = price / 1000;
+                                            if (kValue == kValue.round()) {
+                                              return '${kValue.round()}k';
+                                            } else {
+                                              return '${kValue.toStringAsFixed(1)}k';
+                                            }
+                                          } else {
+                                            return '${price.round()}';
+                                          }
+                                        }
+
                                         return Text(
-                                          '${value.toStringAsFixed(0)} Rwf',
+                                          formatPrice(value),
                                           style: const TextStyle(fontSize: 10),
                                         );
                                       },
