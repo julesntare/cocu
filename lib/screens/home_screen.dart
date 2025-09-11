@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import '../models/item.dart';
 import '../services/database_service.dart';
+import '../widgets/monthly_summary_widget.dart';
 import 'add_item_screen.dart';
 import 'item_detail_screen.dart';
 import 'search_screen.dart';
@@ -19,6 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final DatabaseService _databaseService = DatabaseService();
   List<Item> _items = [];
   bool _isLoading = true;
+  int _summaryRefreshKey = 0;
 
   @override
   void initState() {
@@ -37,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _items = items;
         _isLoading = false;
+        _summaryRefreshKey++; // Refresh the summary widget
       });
     } catch (e) {
       setState(() {
@@ -162,6 +165,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
+          // Monthly Summary
+          MonthlySummaryWidget(key: ValueKey(_summaryRefreshKey)),
           // Items list
           Expanded(
             child: _isLoading

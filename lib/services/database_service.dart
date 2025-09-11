@@ -230,4 +230,23 @@ class DatabaseService {
     ''');
     return maps.map((map) => PriceHistory.fromMap(map)).toList();
   }
+
+  Future<Map<String, double>> getMonthlySpending() async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT 
+        strftime('%Y-%m', recorded_at) as month,
+        SUM(price) as total
+      FROM price_history 
+      GROUP BY strftime('%Y-%m', recorded_at)
+      ORDER BY month DESC
+    ''');
+
+    Map<String, double> monthlySpending = {};
+    for (var map in maps) {
+      monthlySpending[map['month'] as String] =
+          (map['total'] as num).toDouble();
+    }
+    return monthlySpending;
+  }
 }
