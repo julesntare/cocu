@@ -57,7 +57,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   }
 
   Future<void> _addPriceEntry() async {
-    final priceController = TextEditingController();
+    // Initialize with current price as default value
+    final priceController = TextEditingController(
+      text: NumberFormat('#,###').format(_currentItem!.currentPrice.round()),
+    );
     DateTime selectedDate = DateTime.now();
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -70,9 +73,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             children: [
               TextField(
                 controller: priceController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Price',
                   suffixText: 'Rwf',
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      priceController.clear();
+                    },
+                  ),
                 ),
                 keyboardType: TextInputType.number,
                 inputFormatters: [
