@@ -234,10 +234,10 @@ class DatabaseService {
   Future<Map<String, double>> getMonthlySpending() async {
     final db = await database;
     final maps = await db.rawQuery('''
-      SELECT 
+      SELECT
         strftime('%Y-%m', recorded_at) as month,
         SUM(price) as total
-      FROM price_history 
+      FROM price_history
       GROUP BY strftime('%Y-%m', recorded_at)
       ORDER BY month DESC
     ''');
@@ -246,6 +246,59 @@ class DatabaseService {
     for (var map in maps) {
       monthlySpending[map['month'] as String] =
           (map['total'] as num).toDouble();
+    }
+    return monthlySpending;
+  }
+
+  Future<Map<String, Map<String, double>>> getMonthlySpendingPerItem() async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT
+        strftime('%Y-%m', ph.recorded_at) as month,
+        i.name as item_name,
+        COUNT(*) as frequency,
+        SUM(ph.price) as total_spent
+      FROM price_history ph
+      JOIN items i ON ph.item_id = i.id
+      GROUP BY strftime('%Y-%m', ph.recorded_at), i.name
+      HAVING COUNT(*) > 1
+      ORDER BY month DESC, total_spent DESC
+    ''');
+
+    Map<String, Map<String, double>> monthlySpendingPerItem = {};
+    for (var map in maps) {
+      final month = map['month'] as String;
+      final itemName = map['item_name'] as String;
+      final totalSpent = (map['total_spent'] as num).toDouble();
+
+      if (!monthlySpendingPerItem.containsKey(month)) {
+        monthlySpendingPerItem[month] = {};
+      }
+      monthlySpendingPerItem[month]![itemName] = totalSpent;
+    }
+    return monthlySpendingPerItem;
+  }
+
+  Future<Map<String, Map<String, dynamic>>> getMonthlySpendingForItem(int itemId) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT
+        strftime('%Y-%m', recorded_at) as month,
+        COUNT(*) as frequency,
+        SUM(price) as total_spent
+      FROM price_history
+      WHERE item_id = ? AND entry_type = 'manual'
+      GROUP BY strftime('%Y-%m', recorded_at)
+      ORDER BY month DESC
+    ''', [itemId]);
+
+    Map<String, Map<String, dynamic>> monthlySpending = {};
+    for (var map in maps) {
+      final month = map['month'] as String;
+      monthlySpending[month] = {
+        'frequency': map['frequency'] as int,
+        'total_spent': (map['total_spent'] as num).toDouble(),
+      };
     }
     return monthlySpending;
   }

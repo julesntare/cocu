@@ -166,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
         children: [
           // Monthly Summary
-          MonthlySummaryWidget(key: ValueKey(_summaryRefreshKey)),
+          MonthlySummaryWidget(key: ValueKey('summary_$_summaryRefreshKey')),
           // Items list
           Expanded(
             child: _isLoading

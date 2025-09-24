@@ -20,6 +20,9 @@ class ItemDetailScreen extends StatefulWidget {
 class _ItemDetailScreenState extends State<ItemDetailScreen> {
   final DatabaseService _databaseService = DatabaseService();
   List<PriceHistory> _priceHistory = [];
+  Map<String, Map<String, dynamic>> _monthlySpending = {};
+  List<String> _monthlySpendingKeys = [];
+  int _currentMonthIndex = 0;
   bool _isLoading = true;
   Item? _currentItem;
 
@@ -38,10 +41,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     try {
       final history = await _databaseService.getPriceHistory(widget.item.id!);
       final updatedItem = await _databaseService.getItemById(widget.item.id!);
+      final monthlySpending = await _databaseService.getMonthlySpendingForItem(widget.item.id!);
 
       setState(() {
         _priceHistory = history;
         _currentItem = updatedItem ?? widget.item;
+        _monthlySpending = monthlySpending;
+        _monthlySpendingKeys = monthlySpending.keys.toList();
+        _currentMonthIndex = 0;
         _isLoading = false;
       });
     } catch (e) {
@@ -389,6 +396,31 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     };
   }
 
+  String _formatMonth(String monthKey) {
+    try {
+      final date = DateTime.parse('$monthKey-01');
+      return DateFormat('MMMM yyyy').format(date);
+    } catch (e) {
+      return monthKey;
+    }
+  }
+
+  void _previousMonthlySpendingMonth() {
+    if (_currentMonthIndex < _monthlySpendingKeys.length - 1) {
+      setState(() {
+        _currentMonthIndex++;
+      });
+    }
+  }
+
+  void _nextMonthlySpendingMonth() {
+    if (_currentMonthIndex > 0) {
+      setState(() {
+        _currentMonthIndex--;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_currentItem == null) {
@@ -588,6 +620,150 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     ),
                   ),
                 const SizedBox(height: 16),
+
+                // Monthly Spending (Frequent Purchases)
+                if (_monthlySpendingKeys.isNotEmpty)
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.calendar_month,
+                                color: Colors.orange,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Monthly Spending',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Monthly purchase summary',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey[600],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              IconButton(
+                                onPressed: _currentMonthIndex < _monthlySpendingKeys.length - 1
+                                    ? _previousMonthlySpendingMonth
+                                    : null,
+                                icon: const Icon(Icons.arrow_left),
+                                tooltip: 'Previous month',
+                              ),
+                              Expanded(
+                                child: Builder(
+                                  builder: (context) {
+                                    if (_monthlySpendingKeys.isEmpty) {
+                                      return const Center(
+                                        child: Text('No monthly data available'),
+                                      );
+                                    }
+
+                                    final currentMonth = _monthlySpendingKeys[_currentMonthIndex];
+                                    final data = _monthlySpending[currentMonth]!;
+                                    final frequency = data['frequency'] as int;
+                                    final totalSpent = data['total_spent'] as double;
+
+                                    return Column(
+                                      children: [
+                                        Text(
+                                          _formatMonth(currentMonth),
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.orange,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            '$frequency purchases',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Column(
+                                          children: [
+                                            const Text(
+                                              'Total Spent',
+                                              style: TextStyle(fontSize: 12),
+                                            ),
+                                            Text(
+                                              '${NumberFormat('#,###').format(totalSpent.round())} Rwf',
+                                              style: const TextStyle(
+                                                fontSize: 24,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.orange,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              ),
+                              IconButton(
+                                onPressed: _currentMonthIndex > 0 ? _nextMonthlySpendingMonth : null,
+                                icon: const Icon(Icons.arrow_right),
+                                tooltip: 'Next month',
+                              ),
+                            ],
+                          ),
+                          if (_monthlySpendingKeys.length > 1) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  '${_currentMonthIndex + 1} of ${_monthlySpendingKeys.length}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                if (_monthlySpendingKeys.isNotEmpty)
+                  const SizedBox(height: 16),
 
                 // Price Chart
                 if (_priceHistory
