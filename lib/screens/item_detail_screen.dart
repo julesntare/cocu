@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import '../models/item.dart';
 import '../models/price_history.dart';
 import '../services/database_service.dart';
+import '../theme/app_theme.dart';
 import 'add_item_screen.dart';
 
 class ItemDetailScreen extends StatefulWidget {
@@ -41,7 +42,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     try {
       final history = await _databaseService.getPriceHistory(widget.item.id!);
       final updatedItem = await _databaseService.getItemById(widget.item.id!);
-      final monthlySpending = await _databaseService.getMonthlySpendingForItem(widget.item.id!);
+      final monthlySpending =
+          await _databaseService.getMonthlySpendingForItem(widget.item.id!);
 
       setState(() {
         _priceHistory = history;
@@ -74,7 +76,35 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: const Text('Add Price Entry'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF8C00), Color(0xFFFF6B35)],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.add_shopping_cart,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Add Price Entry',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -83,12 +113,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 decoration: InputDecoration(
                   labelText: 'Price',
                   suffixText: 'Rwf',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                  ),
+                  prefixIcon:
+                      const Icon(Icons.payments, color: Color(0xFFFFC107)),
                   suffixIcon: IconButton(
                     icon: const Icon(Icons.clear),
                     onPressed: () {
                       priceController.clear();
                     },
                   ),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
                 ),
                 keyboardType: TextInputType.number,
                 inputFormatters: [
@@ -106,45 +148,94 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              Row(
-                children: [
-                  const Text('Date: '),
-                  TextButton(
-                    onPressed: () async {
-                      final date = await showDatePicker(
-                        context: context,
-                        initialDate: selectedDate,
-                        firstDate: DateTime(2020),
-                        lastDate: DateTime.now(),
-                      );
-                      if (date != null) {
-                        setState(() {
-                          selectedDate = date;
-                        });
-                      }
-                    },
-                    child:
-                        Text(DateFormat('MMM dd, yyyy').format(selectedDate)),
+              InkWell(
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (date != null) {
+                    setState(() {
+                      selectedDate = date;
+                    });
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.grey.shade50,
                   ),
-                ],
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today,
+                          color: Color(0xFFFF9500), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Date',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            Text(
+                              DateFormat('MMM dd, yyyy').format(selectedDate),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey.shade700,
+              ),
               child: const Text('Cancel'),
             ),
-            TextButton(
-              onPressed: () {
-                if (priceController.text.isNotEmpty) {
-                  Navigator.pop(context, {
-                    'price': priceController.text,
-                    'date': selectedDate,
-                  });
-                }
-              },
-              child: const Text('Add'),
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFB700), Color(0xFFFF8C00)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: TextButton(
+                onPressed: () {
+                  if (priceController.text.isNotEmpty) {
+                    Navigator.pop(context, {
+                      'price': priceController.text,
+                      'date': selectedDate,
+                    });
+                  }
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                child: const Text(
+                  'Add',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
             ),
           ],
         ),
@@ -277,22 +368,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     final formattedChange = NumberFormat('#,###').format(change.abs().round());
 
     return '$prefix$formattedChange Rwf ($prefix${changePercent.toStringAsFixed(1)}%)';
-  }
-
-  Color _getPriceChangeColor() {
-    // Filter out automatic entries and sort by date
-    final filteredHistory = _priceHistory
-        .where((entry) => entry.entryType == 'manual')
-        .toList()
-      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
-
-    if (filteredHistory.length < 2) return Colors.grey;
-
-    final firstPrice = filteredHistory.first.price; // Oldest entry
-    final lastPrice = filteredHistory.last.price; // Newest entry
-    final change = lastPrice - firstPrice;
-
-    return change >= 0 ? Colors.red : Colors.green;
   }
 
   Map<String, String> _getDateWithDaysDifference(
@@ -430,27 +505,35 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_currentItem!.name),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => AddItemScreen(item: _currentItem),
-                ),
-              ).then((_) => _loadPriceHistory());
-            },
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(60),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: AppColors.primaryGradient,
           ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _addPriceEntry,
+          child: AppBar(
+            title: Text(_currentItem!.name),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AddItemScreen(item: _currentItem),
+                    ),
+                  ).then((_) => _loadPriceHistory());
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.add),
+                onPressed: _addPriceEntry,
+              ),
+            ],
           ),
-        ],
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -458,23 +541,48 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 // Item Info Card
-                Card(
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFFF8C00), Color(0xFFFF6B35)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                    ],
+                  ),
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
-                            CircleAvatar(
-                              backgroundColor: Colors.blue,
-                              radius: 30,
-                              child: Text(
-                                _currentItem!.name[0].toUpperCase(),
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
+                            Container(
+                              width: 70,
+                              height: 70,
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.25),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.4),
+                                  width: 3,
+                                ),
+                              ),
+                              child: Center(
+                                child: Text(
+                                  _currentItem!.name[0].toUpperCase(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
                             ),
@@ -486,61 +594,101 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                   Text(
                                     _currentItem!.name,
                                     style: const TextStyle(
-                                      fontSize: 24,
+                                      fontSize: 22,
                                       fontWeight: FontWeight.bold,
+                                      color: Colors.white,
                                     ),
                                   ),
-                                  if (_currentItem!.description != null)
+                                  if (_currentItem!.description != null) ...[
+                                    const SizedBox(height: 4),
                                     Text(
                                       _currentItem!.description!,
                                       style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey[500],
+                                        fontSize: 13,
+                                        color: Colors.white
+                                            .withValues(alpha: 0.85),
                                       ),
                                     ),
+                                  ],
                                 ],
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text('Current Price'),
-                                Text(
-                                  '${NumberFormat('#,###').format(_currentItem!.currentPrice.round())} Rwf',
-                                  style: const TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            if (_priceHistory
-                                    .where(
-                                        (entry) => entry.entryType == 'manual')
-                                    .length >=
-                                2)
+                        const SizedBox(height: 20),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
                               Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Text('Total Change'),
                                   Text(
-                                    _getPriceChangeText(),
+                                    'Current Price',
                                     style: TextStyle(
-                                      fontSize: 16,
+                                      fontSize: 12,
+                                      color:
+                                          Colors.white.withValues(alpha: 0.85),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${NumberFormat('#,###').format(_currentItem!.currentPrice.round())} Rwf',
+                                    style: const TextStyle(
+                                      fontSize: 26,
                                       fontWeight: FontWeight.bold,
-                                      color: _getPriceChangeColor(),
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ],
                               ),
-                          ],
+                              if (_priceHistory
+                                      .where((entry) =>
+                                          entry.entryType == 'manual')
+                                      .length >=
+                                  2)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      'Total Change',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.white
+                                            .withValues(alpha: 0.85),
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color:
+                                            Colors.white.withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        _getPriceChangeText(),
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -587,7 +735,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                         horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
                                       color: (analysis['color'] as Color)
-                                          .withOpacity(0.1),
+                                          .withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
                                         color: analysis['color'] as Color,
@@ -633,7 +781,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                             children: [
                               const Icon(
                                 Icons.calendar_month,
-                                color: Colors.orange,
+                                color: AppColors.accentStart,
                                 size: 20,
                               ),
                               const SizedBox(width: 8),
@@ -665,7 +813,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               IconButton(
-                                onPressed: _currentMonthIndex < _monthlySpendingKeys.length - 1
+                                onPressed: _currentMonthIndex <
+                                        _monthlySpendingKeys.length - 1
                                     ? _previousMonthlySpendingMonth
                                     : null,
                                 icon: const Icon(Icons.arrow_left),
@@ -676,14 +825,18 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                   builder: (context) {
                                     if (_monthlySpendingKeys.isEmpty) {
                                       return const Center(
-                                        child: Text('No monthly data available'),
+                                        child:
+                                            Text('No monthly data available'),
                                       );
                                     }
 
-                                    final currentMonth = _monthlySpendingKeys[_currentMonthIndex];
-                                    final data = _monthlySpending[currentMonth]!;
+                                    final currentMonth = _monthlySpendingKeys[
+                                        _currentMonthIndex];
+                                    final data =
+                                        _monthlySpending[currentMonth]!;
                                     final frequency = data['frequency'] as int;
-                                    final totalSpent = data['total_spent'] as double;
+                                    final totalSpent =
+                                        data['total_spent'] as double;
 
                                     return Column(
                                       children: [
@@ -702,8 +855,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                             vertical: 4,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: Colors.orange,
-                                            borderRadius: BorderRadius.circular(12),
+                                            gradient: AppColors.accentGradient,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
                                           ),
                                           child: Text(
                                             '$frequency purchases',
@@ -726,7 +880,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                               style: const TextStyle(
                                                 fontSize: 24,
                                                 fontWeight: FontWeight.bold,
-                                                color: Colors.orange,
+                                                color: AppColors.accentStart,
                                               ),
                                             ),
                                           ],
@@ -737,7 +891,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 ),
                               ),
                               IconButton(
-                                onPressed: _currentMonthIndex > 0 ? _nextMonthlySpendingMonth : null,
+                                onPressed: _currentMonthIndex > 0
+                                    ? _nextMonthlySpendingMonth
+                                    : null,
                                 icon: const Icon(Icons.arrow_right),
                                 tooltip: 'Next month',
                               ),
@@ -762,8 +918,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       ),
                     ),
                   ),
-                if (_monthlySpendingKeys.isNotEmpty)
-                  const SizedBox(height: 16),
+                if (_monthlySpendingKeys.isNotEmpty) const SizedBox(height: 16),
 
                 // Price Chart
                 if (_priceHistory
@@ -870,7 +1025,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                   LineChartBarData(
                                     spots: _generateChartData(),
                                     isCurved: true,
-                                    color: Colors.blue,
+                                    gradient: AppColors.primaryGradient,
                                     barWidth: 3,
                                     dotData: const FlDotData(show: true),
                                   ),
@@ -936,45 +1091,92 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     .recordedAt
                                 : null;
 
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 8),
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFFFFF5E6),
+                                    Color(0xFFFFE8CC),
+                                  ],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: const Color(0xFFFF8C00)
+                                      .withValues(alpha: 0.2),
+                                  width: 1,
+                                ),
+                              ),
                               child: Row(
                                 children: [
+                                  Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Color(0xFFFFB700),
+                                          Color(0xFFFF8C00)
+                                        ],
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Row(
-                                          children: [
-                                            Text(
-                                              _getDateWithDaysDifference(
-                                                  history.recordedAt,
-                                                  previousDate)['date']!,
-                                              style: const TextStyle(
-                                                  fontWeight: FontWeight.bold),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              _getDateWithDaysDifference(
-                                                  history.recordedAt,
-                                                  previousDate)['difference']!,
-                                              style: TextStyle(
-                                                fontStyle: FontStyle.italic,
-                                                color: Colors.blue[600],
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ],
+                                        Text(
+                                          _getDateWithDaysDifference(
+                                              history.recordedAt,
+                                              previousDate)['date']!,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: Color(0xFF2C3E50),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _getDateWithDaysDifference(
+                                              history.recordedAt,
+                                              previousDate)['difference']!,
+                                          style: const TextStyle(
+                                            fontStyle: FontStyle.italic,
+                                            color: Color(0xFFFF8C00),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  Text(
-                                    '${NumberFormat('#,###').format(history.price.round())} Rwf',
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFFFFB700),
+                                          Color(0xFFFF8C00)
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '${NumberFormat('#,###').format(history.price.round())} Rwf',
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
                                     ),
                                   ),
                                 ],

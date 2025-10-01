@@ -99,31 +99,43 @@ class _AddItemScreenState extends State<AddItemScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.item == null ? 'Add Item' : 'Edit Item'),
-        backgroundColor: Colors.blue,
-        foregroundColor: Colors.white,
-        actions: [
-          if (_isLoading)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-            )
-          else
-            IconButton(
-              icon: const Icon(Icons.check),
-              onPressed: _saveItem,
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(60),
+        child: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFFFF8C00), Color(0xFFFF6B35)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
             ),
-        ],
+          ),
+          child: AppBar(
+            title: Text(widget.item == null ? 'Add Item' : 'Edit Item'),
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            actions: [
+              if (_isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(16),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                IconButton(
+                  icon: const Icon(Icons.check),
+                  onPressed: _saveItem,
+                ),
+            ],
+          ),
+        ),
       ),
       body: Form(
         key: _formKey,
@@ -132,10 +144,22 @@ class _AddItemScreenState extends State<AddItemScreen> {
           children: [
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Item Name',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.shopping_cart),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                ),
+                prefixIcon: const Icon(Icons.shopping_cart, color: Color(0xFFFF8C00)),
+                filled: true,
+                fillColor: Colors.grey.shade50,
               ),
               validator: (value) {
                 if (value == null || value.trim().isEmpty) {
@@ -145,14 +169,26 @@ class _AddItemScreenState extends State<AddItemScreen> {
               },
               textCapitalization: TextCapitalization.words,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             TextFormField(
               controller: _priceController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Price',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.payments),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                ),
+                prefixIcon: const Icon(Icons.payments, color: Color(0xFFFFC107)),
                 suffixText: 'Rwf',
+                filled: true,
+                fillColor: Colors.grey.shade50,
               ),
               keyboardType: TextInputType.number,
               inputFormatters: [
@@ -180,18 +216,30 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 return null;
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             TextFormField(
               controller: _descriptionController,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Description (Optional)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.description),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                ),
+                prefixIcon: const Icon(Icons.description, color: Color(0xFFFFB700)),
+                filled: true,
+                fillColor: Colors.grey.shade50,
               ),
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             InkWell(
               onTap: () async {
                 final date = await showDatePicker(
@@ -207,11 +255,19 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 }
               },
               child: InputDecorator(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Purchase Date (Optional)',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.calendar_today),
-                  suffixIcon: Icon(Icons.arrow_drop_down),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  prefixIcon: const Icon(Icons.calendar_today, color: Color(0xFFFF9500)),
+                  suffixIcon: const Icon(Icons.arrow_drop_down),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
                 ),
                 child: Text(
                   _selectedDate != null
@@ -224,17 +280,41 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 32),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _saveItem,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
+            const SizedBox(height: 24),
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFB700), Color(0xFFFF8C00)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFFB700).withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
               ),
-              child: Text(
-                widget.item == null ? 'Add Item' : 'Update Item',
-                style: const TextStyle(fontSize: 16),
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _saveItem,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  shadowColor: Colors.transparent,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  widget.item == null ? 'Add Item' : 'Update Item',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
           ],
