@@ -17,6 +17,8 @@ class _MonthlySummaryWidgetState extends State<MonthlySummaryWidget> {
   List<String> _months = [];
   int _currentMonthIndex = 0;
   bool _isLoading = true;
+  bool _isExpanded = false;
+  List<Map<String, dynamic>> _currentMonthItems = [];
 
   @override
   void initState() {
@@ -61,7 +63,9 @@ class _MonthlySummaryWidgetState extends State<MonthlySummaryWidget> {
     if (_currentMonthIndex < _months.length - 1) {
       setState(() {
         _currentMonthIndex++;
+        _isExpanded = false;
       });
+      _loadMonthItems();
     }
   }
 
@@ -69,7 +73,27 @@ class _MonthlySummaryWidgetState extends State<MonthlySummaryWidget> {
     if (_currentMonthIndex > 0) {
       setState(() {
         _currentMonthIndex--;
+        _isExpanded = false;
       });
+      _loadMonthItems();
+    }
+  }
+
+  Future<void> _loadMonthItems() async {
+    if (_months.isEmpty) return;
+    final currentMonth = _months[_currentMonthIndex];
+    final items = await _databaseService.getMonthlyItems(currentMonth);
+    setState(() {
+      _currentMonthItems = items;
+    });
+  }
+
+  void _toggleExpanded() {
+    setState(() {
+      _isExpanded = !_isExpanded;
+    });
+    if (_isExpanded && _currentMonthItems.isEmpty) {
+      _loadMonthItems();
     }
   }
 
@@ -132,14 +156,28 @@ class _MonthlySummaryWidgetState extends State<MonthlySummaryWidget> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        '${NumberFormat('#,###').format(currentSpending.round())} Rwf',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green,
+                      InkWell(
+                        onTap: _toggleExpanded,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              '${NumberFormat('#,###').format(currentSpending.round())} Rwf',
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(
+                              _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                              size: 24,
+                              color: Colors.green,
+                            ),
+                          ],
                         ),
-                        textAlign: TextAlign.center,
                       ),
                     ],
                   ),
@@ -151,6 +189,41 @@ class _MonthlySummaryWidgetState extends State<MonthlySummaryWidget> {
                 ),
               ],
             ),
+            if (_isExpanded && _currentMonthItems.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _currentMonthItems.length,
+                itemBuilder: (context, index) {
+                  final item = _currentMonthItems[index];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item['name'] as String,
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        ),
+                        Text(
+                          '${NumberFormat('#,###').format((item['amount'] as double).round())} Rwf',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ],
             if (_months.length > 1) ...[
               const SizedBox(height: 12),
               Row(

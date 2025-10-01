@@ -302,4 +302,23 @@ class DatabaseService {
     }
     return monthlySpending;
   }
+
+  Future<List<Map<String, dynamic>>> getMonthlyItems(String monthKey) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT
+        i.name as item_name,
+        SUM(ph.price) as total_amount
+      FROM price_history ph
+      JOIN items i ON ph.item_id = i.id
+      WHERE strftime('%Y-%m', ph.recorded_at) = ?
+      GROUP BY i.id, i.name
+      ORDER BY total_amount DESC
+    ''', [monthKey]);
+
+    return maps.map((map) => {
+      'name': map['item_name'] as String,
+      'amount': (map['total_amount'] as num).toDouble(),
+    }).toList();
+  }
 }
