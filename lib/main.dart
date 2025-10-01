@@ -16,7 +16,7 @@ class CocuApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Cost Curve',
+      title: 'CoCu',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,

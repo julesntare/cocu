@@ -126,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cost Curve'),
+        title: const Text('CoCu'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
