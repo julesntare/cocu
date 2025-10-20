@@ -377,11 +377,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     if (daysDifference == 0) {
       return '(Ended: $endDateFormatted)';
     } else if (daysDifference == 1) {
-      return '(Ended: $endDateFormatted, 1 day)';
+      return '(Ended: $endDateFormatted, \nAfter 1 day)';
     } else {
       final formattedDifference =
           _formatDaysDifferenceForEnd(daysDifference.abs());
-      return '(Ended: $endDateFormatted, $formattedDifference)';
+      return '(Ended: $endDateFormatted, \nAfter $formattedDifference)';
     }
   }
 
@@ -523,7 +523,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                         : '(Initial Price)'),
                             style: const TextStyle(
                               fontStyle: FontStyle.italic,
-                              color: Color(0xFFFF8C00),
+                              color: Colors.blue,
                               fontSize: 11,
                               fontWeight: FontWeight.w500,
                             ),
