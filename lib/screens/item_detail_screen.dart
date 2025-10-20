@@ -417,6 +417,312 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     }
   }
 
+  Future<void> _editPriceEntry(PriceHistory history) async {
+    final priceController = TextEditingController(
+      text: NumberFormat('#,###').format(history.price.round()),
+    );
+    DateTime selectedDate = history.recordedAt;
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF8C00), Color(0xFFFF6B35)],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.edit,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Edit Price Entry',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: priceController,
+                decoration: InputDecoration(
+                  labelText: 'Price',
+                  suffixText: 'Rwf',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                  ),
+                  prefixIcon:
+                      const Icon(Icons.payments, color: Color(0xFFFFC107)),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () {
+                      priceController.clear();
+                    },
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  TextInputFormatter.withFunction((oldValue, newValue) {
+                    if (newValue.text.isEmpty) return newValue;
+                    final int value = int.parse(newValue.text);
+                    final formatted = NumberFormat('#,###').format(value);
+                    return TextEditingValue(
+                      text: formatted,
+                      selection:
+                          TextSelection.collapsed(offset: formatted.length),
+                    );
+                  }),
+                ],
+              ),
+              const SizedBox(height: 16),
+              InkWell(
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (date != null) {
+                    setState(() {
+                      selectedDate = date;
+                    });
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.grey.shade50,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today,
+                          color: Color(0xFFFF9500), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Date',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            Text(
+                              DateFormat('MMM dd, yyyy').format(selectedDate),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey.shade700,
+              ),
+              child: const Text('Cancel'),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFB700), Color(0xFFFF8C00)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: TextButton(
+                onPressed: () {
+                  if (priceController.text.isNotEmpty) {
+                    Navigator.pop(context, {
+                      'price': priceController.text,
+                      'date': selectedDate,
+                    });
+                  }
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                child: const Text(
+                  'Update',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      try {
+        final priceText = result['price']!;
+        final price = double.parse(priceText.replaceAll(',', ''));
+        final recordedAt = result['date'] as DateTime;
+
+        final updatedPriceHistory = history.copyWith(
+          price: price,
+          recordedAt: recordedAt,
+        );
+
+        await _databaseService.updatePriceHistory(updatedPriceHistory);
+
+        // Update item's current price if this is the most recent entry
+        final allHistory = await _databaseService.getPriceHistory(_currentItem!.id!);
+        final mostRecent = allHistory.reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
+        if (mostRecent.id == updatedPriceHistory.id) {
+          final updatedItem = _currentItem!.copyWith(
+            currentPrice: price,
+            updatedAt: DateTime.now(),
+          );
+          await _databaseService.updateItem(updatedItem);
+        }
+
+        _loadPriceHistory();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Price entry updated successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating price entry: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _deletePriceEntry(PriceHistory history) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.delete, color: Colors.red, size: 24),
+            SizedBox(width: 12),
+            Text(
+              'Delete Price Entry',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: const Text('Are you sure you want to delete this price entry?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.grey.shade700,
+            ),
+            child: const Text('Cancel'),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+              child: const Text(
+                'Delete',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await _databaseService.deletePriceHistory(history.id!);
+
+        // Update item's current price if this was the most recent entry
+        final allHistory = await _databaseService.getPriceHistory(_currentItem!.id!);
+        if (allHistory.isNotEmpty) {
+          final mostRecent = allHistory.reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
+          final updatedItem = _currentItem!.copyWith(
+            currentPrice: mostRecent.price,
+            updatedAt: DateTime.now(),
+          );
+          await _databaseService.updateItem(updatedItem);
+        } else {
+          // If no history remains, set current price to 0 or some default
+          final updatedItem = _currentItem!.copyWith(
+            currentPrice: 0.0,
+            updatedAt: DateTime.now(),
+          );
+          await _databaseService.updateItem(updatedItem);
+        }
+
+        _loadPriceHistory();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Price entry deleted successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting price entry: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Map<String, dynamic> _getPurchaseConsistencyAnalysis() {
     // Filter out automatic entries and sort by date
     final filteredHistory = _priceHistory
@@ -1145,72 +1451,118 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                   width: 1,
                                 ),
                               ),
-                              child: Row(
+                              child: Stack(
+                                alignment: Alignment.topRight,
                                 children: [
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      gradient: LinearGradient(
-                                        colors: [
-                                          Color(0xFFFFB700),
-                                          Color(0xFFFF8C00)
-                                        ],
-                                      ),
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 40), // Add space for the menu button
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(
-                                          DateFormat('MMM dd, yyyy').format(history.recordedAt),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: Color(0xFF2C3E50),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          nextDate != null 
-                                            ? _getEndDateWithDaysDifference(history.recordedAt, nextDate)
-                                            : (chronologicalIndex == sortedHistory.length - 1 ? '(Latest Entry)' : '(Initial Price)'),
-                                          style: const TextStyle(
-                                            fontStyle: FontStyle.italic,
-                                            color: Color(0xFFFF8C00),
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w500,
-                                          ),
+                                        Row(
+                                          children: [
+                                            Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: const BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  colors: [
+                                                    Color(0xFFFFB700),
+                                                    Color(0xFFFF8C00)
+                                                  ],
+                                                ),
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    DateFormat('MMM dd, yyyy').format(history.recordedAt),
+                                                    style: const TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 14,
+                                                      color: Color(0xFF2C3E50),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    nextDate != null 
+                                                      ? _getEndDateWithDaysDifference(history.recordedAt, nextDate)
+                                                      : (chronologicalIndex == sortedHistory.length - 1 ? '(Latest Entry)' : '(Initial Price)'),
+                                                    style: const TextStyle(
+                                                      fontStyle: FontStyle.italic,
+                                                      color: Color(0xFFFF8C00),
+                                                      fontSize: 11,
+                                                      fontWeight: FontWeight.w500,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 6,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                gradient: const LinearGradient(
+                                                  colors: [
+                                                    Color(0xFFFFB700),
+                                                    Color(0xFFFF8C00)
+                                                  ],
+                                                ),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Text(
+                                                '${NumberFormat('#,###').format(history.price.round())} Rwf',
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
                                   ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFFFFB700),
-                                          Color(0xFFFF8C00)
-                                        ],
+                                  PopupMenuButton(
+                                    icon: const Icon(Icons.more_vert),
+                                    tooltip: 'Price entry options',
+                                    onSelected: (value) {
+                                      if (value == 'edit') {
+                                        _editPriceEntry(history);
+                                      } else if (value == 'delete') {
+                                        _deletePriceEntry(history);
+                                      }
+                                    },
+                                    itemBuilder: (context) => [
+                                      PopupMenuItem(
+                                        value: 'edit',
+                                        child: Row(
+                                          children: const [
+                                            Icon(Icons.edit, size: 18),
+                                            SizedBox(width: 8),
+                                            Text('Edit'),
+                                          ],
+                                        ),
                                       ),
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                    child: Text(
-                                      '${NumberFormat('#,###').format(history.price.round())} Rwf',
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
+                                      PopupMenuItem(
+                                        value: 'delete',
+                                        child: Row(
+                                          children: const [
+                                            Icon(Icons.delete, size: 18, color: Colors.red),
+                                            SizedBox(width: 8),
+                                            Text('Delete', style: TextStyle(color: Colors.red)),
+                                          ],
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ],
                               ),
