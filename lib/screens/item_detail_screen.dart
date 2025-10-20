@@ -385,7 +385,25 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     } else if (daysDifference == 1) {
       return {'date': dateStr, 'difference': '(Next day)'};
     } else {
-      return {'date': dateStr, 'difference': '(After $daysDifference days)'};
+      final formattedDifference = _formatDaysDifference(daysDifference.abs());
+      final prefix = daysDifference >= 0 ? '' : 'After ';
+      return {'date': dateStr, 'difference': '($prefix$formattedDifference)'};
+    }
+  }
+
+  String _formatDaysDifference(int days) {
+    if (days < 30) {
+      return 'After $days days';
+    } else {
+      final months = days ~/ 30;
+      final remainingDays = days % 30;
+      if (remainingDays == 0) {
+        return months == 1 ? 'After 1 month' : 'After $months months';
+      } else {
+        final monthText = months == 1 ? '1 month' : '$months months';
+        final dayText = remainingDays == 1 ? '1 day' : '$remainingDays days';
+        return 'After $monthText and $dayText';
+      }
     }
   }
 
