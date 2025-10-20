@@ -4,6 +4,7 @@ class PriceHistory {
   final double price;
   final DateTime recordedAt;
   final DateTime? createdAt;
+  final DateTime? finishedAt;
   final String entryType; // 'manual' or 'automatic'
 
   PriceHistory({
@@ -12,6 +13,7 @@ class PriceHistory {
     required this.price,
     required this.recordedAt,
     this.createdAt,
+    this.finishedAt,
     this.entryType = 'manual',
   });
 
@@ -23,6 +25,7 @@ class PriceHistory {
       'recorded_at': recordedAt.toIso8601String(),
       'created_at':
           createdAt?.toIso8601String() ?? recordedAt.toIso8601String(),
+      'finished_at': finishedAt?.toIso8601String(),
       'entry_type': entryType,
     };
   }
@@ -35,7 +38,29 @@ class PriceHistory {
       recordedAt: DateTime.parse(map['recorded_at']),
       createdAt:
           map['created_at'] != null ? DateTime.parse(map['created_at']) : null,
+      finishedAt:
+          map['finished_at'] != null ? DateTime.parse(map['finished_at']) : null,
       entryType: map['entry_type'] ?? 'manual',
+    );
+  }
+
+  PriceHistory copyWith({
+    int? id,
+    int? itemId,
+    double? price,
+    DateTime? recordedAt,
+    DateTime? createdAt,
+    DateTime? finishedAt,
+    String? entryType,
+  }) {
+    return PriceHistory(
+      id: id ?? this.id,
+      itemId: itemId ?? this.itemId,
+      price: price ?? this.price,
+      recordedAt: recordedAt ?? this.recordedAt,
+      createdAt: createdAt ?? this.createdAt,
+      finishedAt: finishedAt ?? this.finishedAt,
+      entryType: entryType ?? this.entryType,
     );
   }
 }

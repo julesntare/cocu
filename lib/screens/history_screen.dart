@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/price_history.dart';
 import '../services/database_service.dart';
+import '../widgets/finish_date_popup.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -44,18 +45,60 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  Map<String, List<PriceHistory>> _groupHistoryByDate() {
-    final Map<String, List<PriceHistory>> grouped = {};
+  List<PriceHistory> _getSortedHistory() {
+    // Sort all history by recordedAt in descending order (most recent first)
+    final sortedHistory = List<PriceHistory>.from(_allHistory);
+    sortedHistory.sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
+    return sortedHistory;
+  }
 
-    for (final history in _allHistory) {
-      final dateKey = DateFormat('MMM dd, yyyy').format(history.recordedAt);
-      if (!grouped.containsKey(dateKey)) {
-        grouped[dateKey] = [];
-      }
-      grouped[dateKey]!.add(history);
+  List<Widget> _buildHistoryWithGaps() {
+    final sortedHistory = _getSortedHistory();
+    final List<Widget> widgets = [];
+
+    if (sortedHistory.isEmpty) return widgets;
+
+    for (int i = 0; i < sortedHistory.length; i++) {
+      final currentHistory = sortedHistory[i];
+      
+      // Add the current history item
+      widgets.add(_buildHistoryItem(currentHistory));
     }
 
-    return grouped;
+    return widgets;
+  }
+
+
+
+  Future<void> _markAsFinished(PriceHistory history) async {
+    final DateTime? finishedDate = await showDialog<DateTime?>(
+      context: context,
+      builder: (context) => FinishDatePopup(
+        initialDate: DateTime.now(),
+        onDateSelected: (date) => date,
+      ),
+    );
+
+    if (finishedDate != null) {
+      try {
+        await _databaseService.updatePriceHistoryFinishedAt(history.id!, finishedDate);
+        
+        // Reload the data to reflect changes
+        await _loadHistory();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Record marked as finished on ${DateFormat('MMM dd, yyyy').format(finishedDate)}')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error marking as finished: $e')),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -105,61 +148,49 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   onRefresh: _loadHistory,
                   child: ListView(
                     padding: const EdgeInsets.all(16),
-                    children: _buildHistoryGroups(),
+                    children: _buildHistoryWithGaps(),
                   ),
                 ),
     );
   }
 
-  List<Widget> _buildHistoryGroups() {
-    final groupedHistory = _groupHistoryByDate();
-    final sortedDates = groupedHistory.keys.toList()
-      ..sort((a, b) {
-        final dateA = DateFormat('MMM dd, yyyy').parse(a);
-        final dateB = DateFormat('MMM dd, yyyy').parse(b);
-        return dateB.compareTo(dateA); // Most recent first
-      });
 
-    final List<Widget> widgets = [];
 
-    for (final date in sortedDates) {
-      final historyForDate = groupedHistory[date]!;
-
-      // Sort history for this date by time (most recent first)
-      historyForDate.sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
-
-      // Add date header
-      widgets.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(
-            date,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue,
-            ),
-          ),
-        ),
-      );
-
-      // Add history items for this date
-      for (final history in historyForDate) {
-        widgets.add(_buildHistoryItem(history));
+  String _formatTimeDifference(DateTime startDate, DateTime endDate) {
+    final difference = endDate.difference(startDate);
+    final days = difference.inDays;
+    
+    if (days == 0) {
+      return 'Less than a day';
+    } else if (days == 1) {
+      return '1 day';
+    } else if (days <= 30) {
+      return '$days days';
+    } else if (days <= 60) {
+      final weeks = (days / 7).round();
+      if (weeks == 1) {
+        return '1 week';
+      } else {
+        return '$weeks weeks';
       }
-
-      widgets.add(const SizedBox(height: 16));
+    } else {
+      final months = (days / 30).floor();
+      final remainingDays = days % 30;
+      
+      if (remainingDays == 0) {
+        return months == 1 ? '1 month' : '$months months';
+      } else {
+        return '$months month${months > 1 ? 's' : ''} and $remainingDays day${remainingDays != 1 ? 's' : ''}';
+      }
     }
-
-    return widgets;
   }
 
   Widget _buildHistoryItem(PriceHistory history) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: const CircleAvatar(
-          backgroundColor: Colors.green,
+        leading: CircleAvatar(
+          backgroundColor: history.finishedAt != null ? Colors.green : Colors.grey,
           child: Text(
             'Rwf',
             style: TextStyle(
@@ -169,34 +200,74 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
         ),
-        title: Row(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Price Update'),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.blue[100],
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                DateFormat('HH:mm').format(history.recordedAt),
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.blue[800],
-                  fontWeight: FontWeight.bold,
+            Row(
+              children: [
+                const Text('Price Update'),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    DateFormat('HH:mm').format(history.recordedAt),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.blue[800],
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
+              ],
+            ),
+            if (history.finishedAt != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                '(Finished after ${_formatTimeDifference(history.recordedAt, history.finishedAt!)})',
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF2E7D32),
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                'Finished: ${DateFormat('MMM dd, yyyy').format(history.finishedAt!)}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.green,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (history.finishedAt == null) // Only show mark as finished if not already marked
+              IconButton(
+                icon: const Icon(
+                  Icons.check_circle_outline,
+                  size: 20,
+                  color: Colors.green,
+                ),
+                onPressed: () => _markAsFinished(history),
+                tooltip: 'Mark as finished',
+              ),
+            Text(
+              '${NumberFormat('#,###').format(history.price.round())} Rwf',
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
               ),
             ),
           ],
-        ),
-        trailing: Text(
-          '${NumberFormat('#,###').format(history.price.round())} Rwf',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Colors.green,
-          ),
         ),
       ),
     );

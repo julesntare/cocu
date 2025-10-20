@@ -390,14 +390,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
   String _getEndDateWithDaysDifference(DateTime startDate, DateTime endDate) {
     final daysDifference = endDate.difference(startDate).inDays;
+    final endDateFormatted = DateFormat('MMM dd').format(endDate);
 
     if (daysDifference == 0) {
-      return '(Ended same day)';
+      return '(Ended: $endDateFormatted)';
     } else if (daysDifference == 1) {
-      return '(Ended next day)';
+      return '(Ended: $endDateFormatted, 1 day)';
     } else {
       final formattedDifference = _formatDaysDifferenceForEnd(daysDifference.abs());
-      return '(Ended after $formattedDifference)';
+      return '(Ended: $endDateFormatted, $formattedDifference)';
     }
   }
 
@@ -414,6 +415,19 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         final dayText = remainingDays == 1 ? '1 day' : '$remainingDays days';
         return '$monthText and $dayText';
       }
+    }
+  }
+
+  String _formatPrice(double price) {
+    if (price >= 1000) {
+      double kValue = price / 1000;
+      if (kValue == kValue.round()) {
+        return '${kValue.round()}k Rwf';
+      } else {
+        return '${kValue.toStringAsFixed(1)}k Rwf';
+      }
+    } else {
+      return '${NumberFormat('#,###').format(price.round())} Rwf';
     }
   }
 
@@ -630,6 +644,181 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             SnackBar(content: Text('Error updating price entry: $e')),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _markPriceEntryAsEnded(PriceHistory history) async {
+    DateTime selectedDate = DateTime.now();
+
+    final result = await showDialog<DateTime>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFF8C00), Color(0xFFFF6B35)],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.flag,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Set End Date',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Select the date when this price period ended',
+                style: TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              InkWell(
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 365)), // Allow future dates
+                  );
+                  if (date != null) {
+                    setState(() {
+                      selectedDate = date;
+                    });
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.grey.shade50,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today,
+                          color: Color(0xFFFF9500), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'End Date',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            Text(
+                              DateFormat('MMM dd, yyyy').format(selectedDate),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey.shade700,
+              ),
+              child: const Text('Cancel'),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFB700), Color(0xFFFF8C00)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: TextButton(
+                onPressed: () {
+                  Navigator.pop(context, selectedDate);
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                ),
+                child: const Text(
+                  'Confirm',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      try {
+        await _databaseService.updatePriceHistoryFinishedAt(history.id!, result);
+
+        _loadPriceHistory();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Price entry marked as ended')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error marking price entry as ended: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _markPriceEntryAsUnended(PriceHistory history) async {
+    try {
+      // Set the finishedAt date to null to unmark as ended
+      await _databaseService.updatePriceHistoryFinishedAt(history.id!, null);
+
+      _loadPriceHistory();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Price entry unmarked as ended')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error unmarking price entry as ended: $e')),
+        );
       }
     }
   }
@@ -1490,9 +1679,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                                   ),
                                                   const SizedBox(height: 2),
                                                   Text(
-                                                    nextDate != null 
-                                                      ? _getEndDateWithDaysDifference(history.recordedAt, nextDate)
-                                                      : (chronologicalIndex == sortedHistory.length - 1 ? '(Latest Entry)' : '(Initial Price)'),
+                                                    history.finishedAt != null
+                                                      ? _getEndDateWithDaysDifference(history.recordedAt, history.finishedAt!)
+                                                      : nextDate != null 
+                                                          ? _getEndDateWithDaysDifference(history.recordedAt, nextDate)
+                                                          : (chronologicalIndex == sortedHistory.length - 1 ? '(Latest Entry)' : '(Initial Price)'),
                                                     style: const TextStyle(
                                                       fontStyle: FontStyle.italic,
                                                       color: Color(0xFFFF8C00),
@@ -1518,7 +1709,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                                 borderRadius: BorderRadius.circular(8),
                                               ),
                                               child: Text(
-                                                '${NumberFormat('#,###').format(history.price.round())} Rwf',
+                                                _formatPrice(history.price),
                                                 style: const TextStyle(
                                                   fontSize: 14,
                                                   fontWeight: FontWeight.bold,
@@ -1539,6 +1730,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                         _editPriceEntry(history);
                                       } else if (value == 'delete') {
                                         _deletePriceEntry(history);
+                                      } else if (value == 'mark_ended') {
+                                        _markPriceEntryAsEnded(history);
+                                      } else if (value == 'mark_unended') {
+                                        _markPriceEntryAsUnended(history);
                                       }
                                     },
                                     itemBuilder: (context) => [
@@ -1552,6 +1747,28 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                           ],
                                         ),
                                       ),
+                                      if (history.finishedAt == null)
+                                        PopupMenuItem(
+                                          value: 'mark_ended',
+                                          child: Row(
+                                            children: const [
+                                              Icon(Icons.flag, size: 18, color: Colors.orange),
+                                              SizedBox(width: 8),
+                                              Text('Mark as Ended'),
+                                            ],
+                                          ),
+                                        )
+                                      else
+                                        PopupMenuItem(
+                                          value: 'mark_unended',
+                                          child: Row(
+                                            children: const [
+                                              Icon(Icons.flag, size: 18, color: Colors.green),
+                                              SizedBox(width: 8),
+                                              Text('Mark as Unended'),
+                                            ],
+                                          ),
+                                        ),
                                       PopupMenuItem(
                                         value: 'delete',
                                         child: Row(

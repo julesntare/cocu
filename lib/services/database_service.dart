@@ -19,7 +19,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'cocu.db');
     return await openDatabase(
       path,
-      version: 4, // Increment version to remove note field
+      version: 5, // Increment version to add finished_date field
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -44,6 +44,7 @@ class DatabaseService {
         price REAL NOT NULL,
         recorded_at TEXT NOT NULL,
         created_at TEXT NOT NULL,
+        finished_at TEXT,
         entry_type TEXT NOT NULL DEFAULT 'manual',
         FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
       )
@@ -129,6 +130,15 @@ class DatabaseService {
         print('Error upgrading database to version 4: $e');
       }
     }
+
+    if (oldVersion < 5) {
+      // Add finished_at field to price_history table
+      try {
+        await db.execute('ALTER TABLE price_history ADD COLUMN finished_at TEXT');
+      } catch (e) {
+        print('Error upgrading database to version 5: $e');
+      }
+    }
   }
 
   // Item CRUD operations
@@ -207,6 +217,35 @@ class DatabaseService {
   Future<int> insertPriceHistory(PriceHistory priceHistory) async {
     final db = await database;
     return await db.insert('price_history', priceHistory.toMap());
+  }
+
+  Future<int> updatePriceHistory(PriceHistory priceHistory) async {
+    final db = await database;
+    return await db.update(
+      'price_history',
+      priceHistory.toMap(),
+      where: 'id = ?',
+      whereArgs: [priceHistory.id],
+    );
+  }
+
+  Future<int> updatePriceHistoryFinishedAt(int id, DateTime? finishedAt) async {
+    final db = await database;
+    return await db.update(
+      'price_history',
+      {'finished_at': finishedAt?.toIso8601String()},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deletePriceHistory(int id) async {
+    final db = await database;
+    return await db.delete(
+      'price_history',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
   }
 
   Future<List<PriceHistory>> getPriceHistory(int itemId) async {
