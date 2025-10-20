@@ -372,21 +372,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
 
 
-  String _formatDaysDifference(int days) {
-    if (days < 30) {
-      return 'After $days days';
-    } else {
-      final months = days ~/ 30;
-      final remainingDays = days % 30;
-      if (remainingDays == 0) {
-        return months == 1 ? 'After 1 month' : 'After $months months';
-      } else {
-        final monthText = months == 1 ? '1 month' : '$months months';
-        final dayText = remainingDays == 1 ? '1 day' : '$remainingDays days';
-        return 'After $monthText and $dayText';
-      }
-    }
-  }
+
 
   String _getEndDateWithDaysDifference(DateTime startDate, DateTime endDate) {
     final daysDifference = endDate.difference(startDate).inDays;
@@ -429,6 +415,299 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     } else {
       return '${NumberFormat('#,###').format(price.round())} Rwf';
     }
+  }
+
+  List<Widget> _buildPriceHistoryList(List<PriceHistory> allHistory) {
+    final sortedHistory = allHistory
+        .where((e) => e.entryType == 'manual')
+        .toList()
+      ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
+
+    List<Widget> widgets = [];
+
+    for (int i = 0; i < sortedHistory.length; i++) {
+      final history = sortedHistory[i];
+      
+      // Add the main price history record
+      widgets.add(_buildPriceHistoryItem(history, sortedHistory));
+      
+      // Check if this record is ended and there's a next record
+      if (history.finishedAt != null && i < sortedHistory.length - 1) {
+        final nextRecord = sortedHistory[i + 1];
+        final gapDays = nextRecord.recordedAt.difference(history.finishedAt!).inDays;
+        
+        // Only add a gap record if there's a gap (more than 0 days) 
+        if (gapDays > 0) {
+          widgets.add(_buildGapRecord(history.finishedAt!, nextRecord.recordedAt, gapDays));
+        }
+      }
+    }
+
+    return widgets.reversed.toList();
+  }
+
+  Widget _buildPriceHistoryItem(PriceHistory history, List<PriceHistory> sortedHistory) {
+    // Find the current entry's position in chronologically sorted list
+    final chronologicalIndex = sortedHistory.indexWhere(
+        (e) =>
+            e.recordedAt == history.recordedAt &&
+            e.price == history.price);
+
+    // Get the chronologically next entry (the one that came after this one in time)
+    final nextDate = chronologicalIndex < sortedHistory.length - 1
+        ? sortedHistory[chronologicalIndex + 1]
+            .recordedAt
+        : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFFFFF5E6),
+            Color(0xFFFFE8CC),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFFFF8C00)
+              .withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.topRight,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 40), // Add space for the menu button
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Color(0xFFFFB700),
+                            Color(0xFFFF8C00)
+                          ],
+                        ),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            DateFormat('MMM dd, yyyy').format(history.recordedAt),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Color(0xFF2C3E50),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            history.finishedAt != null
+                              ? _getEndDateWithDaysDifference(history.recordedAt, history.finishedAt!)
+                              : nextDate != null 
+                                  ? _getEndDateWithDaysDifference(history.recordedAt, nextDate)
+                                  : (chronologicalIndex == sortedHistory.length - 1 ? '(Latest Entry)' : '(Initial Price)'),
+                            style: const TextStyle(
+                              fontStyle: FontStyle.italic,
+                              color: Color(0xFFFF8C00),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFFFFB700),
+                            Color(0xFFFF8C00)
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _formatPrice(history.price),
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          PopupMenuButton(
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'Price entry options',
+            onSelected: (value) {
+              if (value == 'edit') {
+                _editPriceEntry(history);
+              } else if (value == 'delete') {
+                _deletePriceEntry(history);
+              } else if (value == 'mark_ended') {
+                _markPriceEntryAsEnded(history);
+              } else if (value == 'mark_unended') {
+                _markPriceEntryAsUnended(history);
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'edit',
+                child: Row(
+                  children: const [
+                    Icon(Icons.edit, size: 18),
+                    SizedBox(width: 8),
+                    Text('Edit'),
+                  ],
+                ),
+              ),
+              if (history.finishedAt == null)
+                PopupMenuItem(
+                  value: 'mark_ended',
+                  child: Row(
+                    children: const [
+                      Icon(Icons.flag, size: 18, color: Colors.orange),
+                      SizedBox(width: 8),
+                      Text('Mark as Ended'),
+                    ],
+                  ),
+                )
+              else
+                PopupMenuItem(
+                  value: 'mark_unended',
+                  child: Row(
+                    children: const [
+                      Icon(Icons.flag, size: 18, color: Colors.green),
+                      SizedBox(width: 8),
+                      Text('Mark as Unended'),
+                    ],
+                  ),
+                ),
+              PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: const [
+                    Icon(Icons.delete, size: 18, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Delete', style: TextStyle(color: Colors.red)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGapRecord(DateTime endDate, DateTime nextDate, int gapDays) {
+    final formattedGap = _formatDaysDifferenceForEnd(gapDays);
+    
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [
+            Color(0xFFE8F4F8),  // Light blue background for gap records
+            Color(0xFFD1E7ED),  // Slightly darker blue
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF4A90E2)  // Blue border for gap records
+              .withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Color(0xFF4A90E2),  // Blue circle for gap records
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Gap Period',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: Color(0xFF2C3E50),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '(${DateFormat('MMM dd').format(endDate)} to ${DateFormat('MMM dd, yyyy').format(nextDate)}, $formattedGap)',
+                  style: const TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: Color(0xFF4A90E2),  // Blue text for gap records
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 6,
+            ),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFF4A90E2),  // Blue gradient for gap records
+                  Color(0xFF2A7FCA)
+                ],
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'Gap',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _editPriceEntry(PriceHistory history) async {
@@ -1592,199 +1871,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                             .isEmpty)
                           const Text('No manual price entries yet')
                         else
-                          ...(_priceHistory
-                                  .where((entry) => entry.entryType == 'manual')
-                                  .toList()
-                                ..sort((a, b) =>
-                                    a.recordedAt.compareTo(b.recordedAt)))
-                              .reversed
-                              .toList()
-                              .asMap()
-                              .entries
-                              .map((entry) {
-                            final history = entry.value;
-                            final sortedHistory = _priceHistory
-                                .where((e) => e.entryType == 'manual')
-                                .toList()
-                              ..sort((a, b) =>
-                                  a.recordedAt.compareTo(b.recordedAt));
-
-                            // Find the current entry's position in chronologically sorted list
-                            final chronologicalIndex = sortedHistory.indexWhere(
-                                (e) =>
-                                    e.recordedAt == history.recordedAt &&
-                                    e.price == history.price);
-
-                            // Get the chronologically next entry (the one that came after this one in time)
-                            final nextDate = chronologicalIndex < sortedHistory.length - 1
-                                ? sortedHistory[chronologicalIndex + 1]
-                                    .recordedAt
-                                : null;
-
-                            return Container(
-                              margin: const EdgeInsets.only(bottom: 10),
-                              padding: const EdgeInsets.all(14),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFFFFF5E6),
-                                    Color(0xFFFFE8CC),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFFFF8C00)
-                                      .withValues(alpha: 0.2),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Stack(
-                                alignment: Alignment.topRight,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(right: 40), // Add space for the menu button
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Container(
-                                              width: 8,
-                                              height: 8,
-                                              decoration: const BoxDecoration(
-                                                gradient: LinearGradient(
-                                                  colors: [
-                                                    Color(0xFFFFB700),
-                                                    Color(0xFFFF8C00)
-                                                  ],
-                                                ),
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    DateFormat('MMM dd, yyyy').format(history.recordedAt),
-                                                    style: const TextStyle(
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 14,
-                                                      color: Color(0xFF2C3E50),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 2),
-                                                  Text(
-                                                    history.finishedAt != null
-                                                      ? _getEndDateWithDaysDifference(history.recordedAt, history.finishedAt!)
-                                                      : nextDate != null 
-                                                          ? _getEndDateWithDaysDifference(history.recordedAt, nextDate)
-                                                          : (chronologicalIndex == sortedHistory.length - 1 ? '(Latest Entry)' : '(Initial Price)'),
-                                                    style: const TextStyle(
-                                                      fontStyle: FontStyle.italic,
-                                                      color: Color(0xFFFF8C00),
-                                                      fontSize: 11,
-                                                      fontWeight: FontWeight.w500,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(
-                                                horizontal: 12,
-                                                vertical: 6,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                gradient: const LinearGradient(
-                                                  colors: [
-                                                    Color(0xFFFFB700),
-                                                    Color(0xFFFF8C00)
-                                                  ],
-                                                ),
-                                                borderRadius: BorderRadius.circular(8),
-                                              ),
-                                              child: Text(
-                                                _formatPrice(history.price),
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuButton(
-                                    icon: const Icon(Icons.more_vert),
-                                    tooltip: 'Price entry options',
-                                    onSelected: (value) {
-                                      if (value == 'edit') {
-                                        _editPriceEntry(history);
-                                      } else if (value == 'delete') {
-                                        _deletePriceEntry(history);
-                                      } else if (value == 'mark_ended') {
-                                        _markPriceEntryAsEnded(history);
-                                      } else if (value == 'mark_unended') {
-                                        _markPriceEntryAsUnended(history);
-                                      }
-                                    },
-                                    itemBuilder: (context) => [
-                                      PopupMenuItem(
-                                        value: 'edit',
-                                        child: Row(
-                                          children: const [
-                                            Icon(Icons.edit, size: 18),
-                                            SizedBox(width: 8),
-                                            Text('Edit'),
-                                          ],
-                                        ),
-                                      ),
-                                      if (history.finishedAt == null)
-                                        PopupMenuItem(
-                                          value: 'mark_ended',
-                                          child: Row(
-                                            children: const [
-                                              Icon(Icons.flag, size: 18, color: Colors.orange),
-                                              SizedBox(width: 8),
-                                              Text('Mark as Ended'),
-                                            ],
-                                          ),
-                                        )
-                                      else
-                                        PopupMenuItem(
-                                          value: 'mark_unended',
-                                          child: Row(
-                                            children: const [
-                                              Icon(Icons.flag, size: 18, color: Colors.green),
-                                              SizedBox(width: 8),
-                                              Text('Mark as Unended'),
-                                            ],
-                                          ),
-                                        ),
-                                      PopupMenuItem(
-                                        value: 'delete',
-                                        child: Row(
-                                          children: const [
-                                            Icon(Icons.delete, size: 18, color: Colors.red),
-                                            SizedBox(width: 8),
-                                            Text('Delete', style: TextStyle(color: Colors.red)),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            );
-                          }),
+                          ..._buildPriceHistoryList(_priceHistory),
                       ],
                     ),
                   ),
