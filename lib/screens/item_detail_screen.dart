@@ -370,26 +370,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     return '$prefix$formattedChange Rwf ($prefix${changePercent.toStringAsFixed(1)}%)';
   }
 
-  Map<String, String> _getDateWithDaysDifference(
-      DateTime date, DateTime? previousDate) {
-    final dateStr = DateFormat('MMM dd, yyyy').format(date);
 
-    if (previousDate == null) {
-      return {'date': dateStr, 'difference': '(Initial Price)'};
-    }
-
-    final daysDifference = date.difference(previousDate).inDays;
-
-    if (daysDifference == 0) {
-      return {'date': dateStr, 'difference': '(Same day)'};
-    } else if (daysDifference == 1) {
-      return {'date': dateStr, 'difference': '(Next day)'};
-    } else {
-      final formattedDifference = _formatDaysDifference(daysDifference.abs());
-      final prefix = daysDifference >= 0 ? '' : 'After ';
-      return {'date': dateStr, 'difference': '($prefix$formattedDifference)'};
-    }
-  }
 
   String _formatDaysDifference(int days) {
     if (days < 30) {
@@ -403,6 +384,35 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         final monthText = months == 1 ? '1 month' : '$months months';
         final dayText = remainingDays == 1 ? '1 day' : '$remainingDays days';
         return 'After $monthText and $dayText';
+      }
+    }
+  }
+
+  String _getEndDateWithDaysDifference(DateTime startDate, DateTime endDate) {
+    final daysDifference = endDate.difference(startDate).inDays;
+
+    if (daysDifference == 0) {
+      return '(Ended same day)';
+    } else if (daysDifference == 1) {
+      return '(Ended next day)';
+    } else {
+      final formattedDifference = _formatDaysDifferenceForEnd(daysDifference.abs());
+      return '(Ended after $formattedDifference)';
+    }
+  }
+
+  String _formatDaysDifferenceForEnd(int days) {
+    if (days < 30) {
+      return '$days days';
+    } else {
+      final months = days ~/ 30;
+      final remainingDays = days % 30;
+      if (remainingDays == 0) {
+        return months == 1 ? '1 month' : '$months months';
+      } else {
+        final monthText = months == 1 ? '1 month' : '$months months';
+        final dayText = remainingDays == 1 ? '1 day' : '$remainingDays days';
+        return '$monthText and $dayText';
       }
     }
   }
@@ -651,8 +661,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                       'Current Price',
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color:
-                                            Colors.white.withValues(alpha: 0.85),
+                                        color: Colors.white
+                                            .withValues(alpha: 0.85),
                                         fontWeight: FontWeight.w500,
                                       ),
                                     ),
@@ -694,9 +704,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                           vertical: 4,
                                         ),
                                         decoration: BoxDecoration(
-                                          color:
-                                              Colors.white.withValues(alpha: 0.2),
-                                          borderRadius: BorderRadius.circular(8),
+                                          color: Colors.white
+                                              .withValues(alpha: 0.2),
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
                                         child: Text(
                                           _getPriceChangeText(),
@@ -1109,9 +1120,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     e.recordedAt == history.recordedAt &&
                                     e.price == history.price);
 
-                            // Get the chronologically previous entry (the one that came before this one in time)
-                            final previousDate = chronologicalIndex > 0
-                                ? sortedHistory[chronologicalIndex - 1]
+                            // Get the chronologically next entry (the one that came after this one in time)
+                            final nextDate = chronologicalIndex < sortedHistory.length - 1
+                                ? sortedHistory[chronologicalIndex + 1]
                                     .recordedAt
                                 : null;
 
@@ -1156,9 +1167,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          _getDateWithDaysDifference(
-                                              history.recordedAt,
-                                              previousDate)['date']!,
+                                          DateFormat('MMM dd, yyyy').format(history.recordedAt),
                                           style: const TextStyle(
                                             fontWeight: FontWeight.bold,
                                             fontSize: 14,
@@ -1167,9 +1176,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          _getDateWithDaysDifference(
-                                              history.recordedAt,
-                                              previousDate)['difference']!,
+                                          nextDate != null 
+                                            ? _getEndDateWithDaysDifference(history.recordedAt, nextDate)
+                                            : (chronologicalIndex == sortedHistory.length - 1 ? '(Latest Entry)' : '(Initial Price)'),
                                           style: const TextStyle(
                                             fontStyle: FontStyle.italic,
                                             color: Color(0xFFFF8C00),
