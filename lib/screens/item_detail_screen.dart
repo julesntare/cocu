@@ -370,10 +370,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     return '$prefix$formattedChange Rwf ($prefix${changePercent.toStringAsFixed(1)}%)';
   }
 
-
-
-
-
   String _getEndDateWithDaysDifference(DateTime startDate, DateTime endDate) {
     final daysDifference = endDate.difference(startDate).inDays;
     final endDateFormatted = DateFormat('MMM dd').format(endDate);
@@ -383,7 +379,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     } else if (daysDifference == 1) {
       return '(Ended: $endDateFormatted, 1 day)';
     } else {
-      final formattedDifference = _formatDaysDifferenceForEnd(daysDifference.abs());
+      final formattedDifference =
+          _formatDaysDifferenceForEnd(daysDifference.abs());
       return '(Ended: $endDateFormatted, $formattedDifference)';
     }
   }
@@ -427,18 +424,20 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
     for (int i = 0; i < sortedHistory.length; i++) {
       final history = sortedHistory[i];
-      
+
       // Add the main price history record
       widgets.add(_buildPriceHistoryItem(history, sortedHistory));
-      
+
       // Check if this record is ended and there's a next record
       if (history.finishedAt != null && i < sortedHistory.length - 1) {
         final nextRecord = sortedHistory[i + 1];
-        final gapDays = nextRecord.recordedAt.difference(history.finishedAt!).inDays;
-        
-        // Only add a gap record if there's a gap (more than 0 days) 
+        final gapDays =
+            nextRecord.recordedAt.difference(history.finishedAt!).inDays;
+
+        // Only add a gap record if there's a gap (more than 0 days)
         if (gapDays > 0) {
-          widgets.add(_buildGapRecord(history.finishedAt!, nextRecord.recordedAt, gapDays));
+          widgets.add(_buildGapRecord(
+              history.finishedAt!, nextRecord.recordedAt, gapDays));
         }
       }
     }
@@ -446,17 +445,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     return widgets.reversed.toList();
   }
 
-  Widget _buildPriceHistoryItem(PriceHistory history, List<PriceHistory> sortedHistory) {
+  Widget _buildPriceHistoryItem(
+      PriceHistory history, List<PriceHistory> sortedHistory) {
     // Find the current entry's position in chronologically sorted list
     final chronologicalIndex = sortedHistory.indexWhere(
-        (e) =>
-            e.recordedAt == history.recordedAt &&
-            e.price == history.price);
+        (e) => e.recordedAt == history.recordedAt && e.price == history.price);
 
     // Get the chronologically next entry (the one that came after this one in time)
     final nextDate = chronologicalIndex < sortedHistory.length - 1
-        ? sortedHistory[chronologicalIndex + 1]
-            .recordedAt
+        ? sortedHistory[chronologicalIndex + 1].recordedAt
         : null;
 
     return Container(
@@ -473,8 +470,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFFFF8C00)
-              .withValues(alpha: 0.2),
+          color: const Color(0xFFFF8C00).withValues(alpha: 0.2),
           width: 1,
         ),
       ),
@@ -482,7 +478,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         alignment: Alignment.topRight,
         children: [
           Padding(
-            padding: const EdgeInsets.only(right: 40), // Add space for the menu button
+            padding: const EdgeInsets.only(
+                right: 40), // Add space for the menu button
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -493,10 +490,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       height: 8,
                       decoration: const BoxDecoration(
                         gradient: LinearGradient(
-                          colors: [
-                            Color(0xFFFFB700),
-                            Color(0xFFFF8C00)
-                          ],
+                          colors: [Color(0xFFFFB700), Color(0xFFFF8C00)],
                         ),
                         shape: BoxShape.circle,
                       ),
@@ -504,11 +498,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            DateFormat('MMM dd, yyyy').format(history.recordedAt),
+                            DateFormat('MMM dd, yyyy')
+                                .format(history.recordedAt),
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,
@@ -518,10 +512,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                           const SizedBox(height: 2),
                           Text(
                             history.finishedAt != null
-                              ? _getEndDateWithDaysDifference(history.recordedAt, history.finishedAt!)
-                              : nextDate != null 
-                                  ? _getEndDateWithDaysDifference(history.recordedAt, nextDate)
-                                  : (chronologicalIndex == sortedHistory.length - 1 ? '(Latest Entry)' : '(Initial Price)'),
+                                ? _getEndDateWithDaysDifference(
+                                    history.recordedAt, history.finishedAt!)
+                                : nextDate != null
+                                    ? _getEndDateWithDaysDifference(
+                                        history.recordedAt, nextDate)
+                                    : (chronologicalIndex ==
+                                            sortedHistory.length - 1
+                                        ? '(Latest Entry)'
+                                        : '(Initial Price)'),
                             style: const TextStyle(
                               fontStyle: FontStyle.italic,
                               color: Color(0xFFFF8C00),
@@ -539,10 +538,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                       ),
                       decoration: BoxDecoration(
                         gradient: const LinearGradient(
-                          colors: [
-                            Color(0xFFFFB700),
-                            Color(0xFFFF8C00)
-                          ],
+                          colors: [Color(0xFFFFB700), Color(0xFFFF8C00)],
                         ),
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -575,10 +571,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               }
             },
             itemBuilder: (context) => [
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'edit',
                 child: Row(
-                  children: const [
+                  children: [
                     Icon(Icons.edit, size: 18),
                     SizedBox(width: 8),
                     Text('Edit'),
@@ -586,10 +582,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                 ),
               ),
               if (history.finishedAt == null)
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: 'mark_ended',
                   child: Row(
-                    children: const [
+                    children: [
                       Icon(Icons.flag, size: 18, color: Colors.orange),
                       SizedBox(width: 8),
                       Text('Mark as Ended'),
@@ -597,20 +593,20 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   ),
                 )
               else
-                PopupMenuItem(
+                const PopupMenuItem(
                   value: 'mark_unended',
                   child: Row(
-                    children: const [
+                    children: [
                       Icon(Icons.flag, size: 18, color: Colors.green),
                       SizedBox(width: 8),
                       Text('Mark as Unended'),
                     ],
                   ),
                 ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'delete',
                 child: Row(
-                  children: const [
+                  children: [
                     Icon(Icons.delete, size: 18, color: Colors.red),
                     SizedBox(width: 8),
                     Text('Delete', style: TextStyle(color: Colors.red)),
@@ -626,22 +622,22 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
   Widget _buildGapRecord(DateTime endDate, DateTime nextDate, int gapDays) {
     final formattedGap = _formatDaysDifferenceForEnd(gapDays);
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
-            Color(0xFFE8F4F8),  // Light blue background for gap records
-            Color(0xFFD1E7ED),  // Slightly darker blue
+            Color(0xFFE8F4F8), // Light blue background for gap records
+            Color(0xFFD1E7ED), // Slightly darker blue
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF4A90E2)  // Blue border for gap records
+          color: const Color(0xFF4A90E2) // Blue border for gap records
               .withValues(alpha: 0.2),
           width: 1,
         ),
@@ -652,7 +648,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             width: 8,
             height: 8,
             decoration: const BoxDecoration(
-              color: Color(0xFF4A90E2),  // Blue circle for gap records
+              color: Color(0xFF4A90E2), // Blue circle for gap records
               shape: BoxShape.circle,
             ),
           ),
@@ -674,7 +670,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   '(${DateFormat('MMM dd').format(endDate)} to ${DateFormat('MMM dd, yyyy').format(nextDate)}, $formattedGap)',
                   style: const TextStyle(
                     fontStyle: FontStyle.italic,
-                    color: Color(0xFF4A90E2),  // Blue text for gap records
+                    color: Color(0xFF4A90E2), // Blue text for gap records
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -690,7 +686,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [
-                  Color(0xFF4A90E2),  // Blue gradient for gap records
+                  Color(0xFF4A90E2), // Blue gradient for gap records
                   Color(0xFF2A7FCA)
                 ],
               ),
@@ -900,8 +896,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         await _databaseService.updatePriceHistory(updatedPriceHistory);
 
         // Update item's current price if this is the most recent entry
-        final allHistory = await _databaseService.getPriceHistory(_currentItem!.id!);
-        final mostRecent = allHistory.reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
+        final allHistory =
+            await _databaseService.getPriceHistory(_currentItem!.id!);
+        final mostRecent = allHistory
+            .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
         if (mostRecent.id == updatedPriceHistory.id) {
           final updatedItem = _currentItem!.copyWith(
             currentPrice: price,
@@ -977,7 +975,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                     context: context,
                     initialDate: selectedDate,
                     firstDate: DateTime(2020),
-                    lastDate: DateTime.now().add(const Duration(days: 365)), // Allow future dates
+                    lastDate: DateTime.now()
+                        .add(const Duration(days: 365)), // Allow future dates
                   );
                   if (date != null) {
                     setState(() {
@@ -1062,7 +1061,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
     if (result != null) {
       try {
-        await _databaseService.updatePriceHistoryFinishedAt(history.id!, result);
+        await _databaseService.updatePriceHistoryFinishedAt(
+            history.id!, result);
 
         _loadPriceHistory();
 
@@ -1122,7 +1122,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             ),
           ],
         ),
-        content: const Text('Are you sure you want to delete this price entry?'),
+        content:
+            const Text('Are you sure you want to delete this price entry?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -1140,7 +1141,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               onPressed: () => Navigator.pop(context, true),
               style: TextButton.styleFrom(
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               ),
               child: const Text(
                 'Delete',
@@ -1157,9 +1159,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         await _databaseService.deletePriceHistory(history.id!);
 
         // Update item's current price if this was the most recent entry
-        final allHistory = await _databaseService.getPriceHistory(_currentItem!.id!);
+        final allHistory =
+            await _databaseService.getPriceHistory(_currentItem!.id!);
         if (allHistory.isNotEmpty) {
-          final mostRecent = allHistory.reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
+          final mostRecent = allHistory
+              .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
           final updatedItem = _currentItem!.copyWith(
             currentPrice: mostRecent.price,
             updatedAt: DateTime.now(),
