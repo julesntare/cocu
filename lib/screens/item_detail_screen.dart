@@ -401,6 +401,18 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     }
   }
 
+  String _calculateDaysOngoingFromLatestEntry(DateTime latestEntryDate) {
+    final daysDifference = DateTime.now().difference(latestEntryDate).inDays;
+    
+    if (daysDifference == 0) {
+      return '0 days';
+    } else if (daysDifference == 1) {
+      return '1 day';
+    } else {
+      return _formatDaysDifferenceForEnd(daysDifference);
+    }
+  }
+
   String _formatPrice(double price) {
     if (price >= 1000) {
       double kValue = price / 1000;
@@ -519,7 +531,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                         history.recordedAt, nextDate)
                                     : (chronologicalIndex ==
                                             sortedHistory.length - 1
-                                        ? '(Latest Entry)'
+                                        ? '(Latest Entry, ongoing by ${_calculateDaysOngoingFromLatestEntry(history.recordedAt)})'
                                         : '(Initial Price)'),
                             style: const TextStyle(
                               fontStyle: FontStyle.italic,
