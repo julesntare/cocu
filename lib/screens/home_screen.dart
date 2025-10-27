@@ -6,8 +6,6 @@ import '../widgets/monthly_summary_widget.dart';
 import '../theme/app_theme.dart';
 import 'add_item_screen.dart';
 import 'item_detail_screen.dart';
-import 'search_screen.dart';
-import 'history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,7 +16,9 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final DatabaseService _databaseService = DatabaseService();
+  final TextEditingController _searchController = TextEditingController();
   List<Item> _items = [];
+  List<Item> _filteredItems = [];
   bool _isLoading = true;
   int _summaryRefreshKey = 0;
 
@@ -26,6 +26,26 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _performSearch(String query) {
+    setState(() {
+      if (query.trim().isEmpty) {
+        _filteredItems = _items;
+      } else {
+        _filteredItems = _items.where((item) {
+          final searchLower = query.toLowerCase();
+          return item.name.toLowerCase().contains(searchLower) ||
+              (item.description?.toLowerCase().contains(searchLower) ?? false);
+        }).toList();
+      }
+    });
   }
 
   Future<void> _loadData() async {
@@ -38,6 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _items = items;
+        _filteredItems = items;
         _isLoading = false;
         _summaryRefreshKey++; // Refresh the summary widget
       });
@@ -136,24 +157,6 @@ class _HomeScreenState extends State<HomeScreen> {
             backgroundColor: Colors.transparent,
             elevation: 0,
             actions: [
-              IconButton(
-                icon: const Icon(Icons.search),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const SearchScreen()),
-                  ).then((_) => _loadData());
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.history),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const HistoryScreen()),
-                  );
-                },
-              ),
               PopupMenuButton<String>(
                 onSelected: (value) {
                   if (value == 'logout') {
@@ -175,6 +178,38 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           // Monthly Summary
           MonthlySummaryWidget(key: ValueKey('summary_$_summaryRefreshKey')),
+          // Search Bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by name or description...',
+                prefixIcon:
+                    const Icon(Icons.search, color: AppColors.textSecondary),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear,
+                            color: AppColors.textSecondary),
+                        onPressed: () {
+                          _searchController.clear();
+                          _performSearch('');
+                        },
+                      )
+                    : null,
+                filled: true,
+                fillColor: Colors.grey[100],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              onChanged: _performSearch,
+              textInputAction: TextInputAction.search,
+            ),
+          ),
           // Items list
           Expanded(
             child: _isLoading
@@ -205,114 +240,148 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _items.length,
-                        itemBuilder: (context, index) {
-                          final item = _items[index];
-                          return Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primaryStart.withValues(alpha: 0.06),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 4),
-                                  spreadRadius: 0,
+                    : _filteredItems.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.search_off,
+                                  size: 64,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No items found',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Try searching with different keywords',
+                                  style: TextStyle(color: Colors.grey[500]),
                                 ),
                               ],
                             ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          ItemDetailScreen(item: item),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _filteredItems.length,
+                            itemBuilder: (context, index) {
+                              final item = _filteredItems[index];
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppColors.primaryStart
+                                          .withValues(alpha: 0.06),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                      spreadRadius: 0,
                                     ),
-                                  ).then((_) => _loadData());
-                                },
-                                onLongPress: () => _deleteItem(item),
-                                borderRadius: BorderRadius.circular(16),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
-                                    children: [
-                                      Hero(
-                                        tag: 'item_avatar_${item.id}',
-                                        child: Container(
-                                          width: 48,
-                                          height: 48,
-                                          decoration: BoxDecoration(
-                                            gradient: AppColors.cardGradient,
-                                            shape: BoxShape.circle,
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: AppColors.cardStart.withValues(alpha: 0.3),
-                                                blurRadius: 8,
-                                                offset: const Offset(0, 4),
-                                              ),
-                                            ],
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              item.name[0].toUpperCase(),
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 20,
-                                              ),
-                                            ),
-                                          ),
+                                  ],
+                                ),
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) =>
+                                              ItemDetailScreen(item: item),
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              item.name,
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 15,
-                                                color: AppColors.textPrimary,
-                                                letterSpacing: 0.1,
+                                      ).then((_) => _loadData());
+                                    },
+                                    onLongPress: () => _deleteItem(item),
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Row(
+                                        children: [
+                                          Hero(
+                                            tag: 'item_avatar_${item.id}',
+                                            child: Container(
+                                              width: 48,
+                                              height: 48,
+                                              decoration: BoxDecoration(
+                                                gradient:
+                                                    AppColors.cardGradient,
+                                                shape: BoxShape.circle,
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: AppColors.cardStart
+                                                        .withValues(alpha: 0.3),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 4),
+                                                  ),
+                                                ],
                                               ),
-                                            ),
-                                            if (item.description != null) ...[
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                item.description!,
-                                                style: const TextStyle(
-                                                  color: AppColors.textSecondary,
-                                                  fontSize: 12,
-                                                  height: 1.3,
+                                              child: Center(
+                                                child: Text(
+                                                  item.name[0].toUpperCase(),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 20,
+                                                  ),
                                                 ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                            ],
-                                          ],
-                                        ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  item.name,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 15,
+                                                    color:
+                                                        AppColors.textPrimary,
+                                                    letterSpacing: 0.1,
+                                                  ),
+                                                ),
+                                                if (item.description !=
+                                                    null) ...[
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    item.description!,
+                                                    style: const TextStyle(
+                                                      color: AppColors
+                                                          .textSecondary,
+                                                      fontSize: 12,
+                                                      height: 1.3,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                          const Icon(
+                                            Icons.chevron_right_rounded,
+                                            color: AppColors.textLight,
+                                            size: 24,
+                                          ),
+                                        ],
                                       ),
-                                      const Icon(
-                                        Icons.chevron_right_rounded,
-                                        color: AppColors.textLight,
-                                        size: 24,
-                                      ),
-                                    ],
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
+                              );
+                            },
+                          ),
           ),
         ],
       ),
