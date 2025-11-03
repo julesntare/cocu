@@ -39,6 +39,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (query.trim().isEmpty) {
         _filteredItems = _items;
       } else {
+        // Filter items while maintaining the ongoing days sort order from _items
         _filteredItems = _items.where((item) {
           final searchLower = query.toLowerCase();
           return item.name.toLowerCase().contains(searchLower) ||
@@ -56,9 +57,33 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final items = await _databaseService.getAllItems();
 
+      // Calculate ongoing days for each item and sort by it
+      final itemsWithOngoingDays = await Future.wait(items.map((item) async {
+        final priceHistory = await _databaseService.getPriceHistory(item.id!);
+        final manualEntries = priceHistory
+            .where((entry) => entry.entryType == 'manual')
+            .toList()
+          ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
+
+        int ongoingDays = 0;
+        if (manualEntries.isNotEmpty) {
+          final latestEntry = manualEntries.last;
+          ongoingDays = DateTime.now().difference(latestEntry.recordedAt).inDays;
+        }
+
+        return {'item': item, 'ongoingDays': ongoingDays};
+      }));
+
+      // Sort by ongoing days (smallest first)
+      itemsWithOngoingDays.sort((a, b) =>
+          (a['ongoingDays'] as int).compareTo(b['ongoingDays'] as int));
+
+      final sortedItems =
+          itemsWithOngoingDays.map((e) => e['item'] as Item).toList();
+
       setState(() {
-        _items = items;
-        _filteredItems = items;
+        _items = sortedItems;
+        _filteredItems = sortedItems;
         _isLoading = false;
         _summaryRefreshKey++; // Refresh the summary widget
       });
