@@ -277,6 +277,7 @@ class DatabaseService {
         strftime('%Y-%m', recorded_at) as month,
         SUM(price) as total
       FROM price_history
+      WHERE entry_type = 'manual'
       GROUP BY strftime('%Y-%m', recorded_at)
       ORDER BY month DESC
     ''');
@@ -350,7 +351,7 @@ class DatabaseService {
         SUM(ph.price) as total_amount
       FROM price_history ph
       JOIN items i ON ph.item_id = i.id
-      WHERE strftime('%Y-%m', ph.recorded_at) = ?
+      WHERE strftime('%Y-%m', ph.recorded_at) = ? AND ph.entry_type = 'manual'
       GROUP BY i.id, i.name
       ORDER BY total_amount DESC
     ''', [monthKey]);
