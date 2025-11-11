@@ -19,6 +19,9 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<Item> _items = [];
   List<Item> _filteredItems = [];
+  Map<int, int> _ongoingDaysMap = {}; // Map of item ID to ongoing days
+  Map<int, bool> _hasActiveRecordMap =
+      {}; // Map of item ID to whether it has active ongoing record
   bool _isLoading = true;
   int _summaryRefreshKey = 0;
 
@@ -66,12 +69,20 @@ class _HomeScreenState extends State<HomeScreen> {
           ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
 
         int ongoingDays = 0;
+        bool hasActiveRecord = false;
         if (manualEntries.isNotEmpty) {
           final latestEntry = manualEntries.last;
-          ongoingDays = DateTime.now().difference(latestEntry.recordedAt).inDays;
+          ongoingDays =
+              DateTime.now().difference(latestEntry.recordedAt).inDays;
+          // Check if the latest entry has no finishedAt (meaning it's still ongoing)
+          hasActiveRecord = latestEntry.finishedAt == null;
         }
 
-        return {'item': item, 'ongoingDays': ongoingDays};
+        return {
+          'item': item,
+          'ongoingDays': ongoingDays,
+          'hasActiveRecord': hasActiveRecord,
+        };
       }));
 
       // Sort by ongoing days (smallest first)
@@ -81,9 +92,22 @@ class _HomeScreenState extends State<HomeScreen> {
       final sortedItems =
           itemsWithOngoingDays.map((e) => e['item'] as Item).toList();
 
+      // Build the ongoing days map and active record map
+      final ongoingDaysMap = <int, int>{};
+      final hasActiveRecordMap = <int, bool>{};
+      for (var itemData in itemsWithOngoingDays) {
+        final item = itemData['item'] as Item;
+        final ongoingDays = itemData['ongoingDays'] as int;
+        final hasActiveRecord = itemData['hasActiveRecord'] as bool;
+        ongoingDaysMap[item.id!] = ongoingDays;
+        hasActiveRecordMap[item.id!] = hasActiveRecord;
+      }
+
       setState(() {
         _items = sortedItems;
         _filteredItems = sortedItems;
+        _ongoingDaysMap = ongoingDaysMap;
+        _hasActiveRecordMap = hasActiveRecordMap;
         _isLoading = false;
         _summaryRefreshKey++; // Refresh the summary widget
       });
@@ -127,6 +151,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  LinearGradient _getOngoingGradient() {
+    // Green gradient for fresh items
+    return const LinearGradient(
+      colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
     );
   }
 
@@ -325,82 +358,77 @@ class _HomeScreenState extends State<HomeScreen> {
                                     },
                                     onLongPress: () => _deleteItem(item),
                                     borderRadius: BorderRadius.circular(16),
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Row(
-                                        children: [
-                                          Hero(
-                                            tag: 'item_avatar_${item.id}',
-                                            child: Container(
-                                              width: 48,
-                                              height: 48,
-                                              decoration: BoxDecoration(
-                                                gradient:
-                                                    AppColors.cardGradient,
-                                                shape: BoxShape.circle,
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: AppColors.cardStart
-                                                        .withValues(alpha: 0.3),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 4),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: Center(
-                                                child: Text(
-                                                  item.name[0].toUpperCase(),
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 20,
-                                                  ),
-                                                ),
+                                    child: Row(
+                                      children: [
+                                        // Left colored bar for ongoing items
+                                        if (_hasActiveRecordMap[item.id] ==
+                                            true)
+                                          Container(
+                                            width: 4,
+                                            height: 20,
+                                            decoration: BoxDecoration(
+                                              gradient: _getOngoingGradient(),
+                                              borderRadius:
+                                                  const BorderRadius.only(
+                                                topLeft: Radius.circular(16),
+                                                bottomLeft: Radius.circular(16),
                                               ),
                                             ),
                                           ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
+                                        Expanded(
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(12),
+                                            child: Row(
                                               children: [
-                                                Text(
-                                                  item.name,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 15,
-                                                    color:
-                                                        AppColors.textPrimary,
-                                                    letterSpacing: 0.1,
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        item.name,
+                                                        style: const TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 15,
+                                                          color: AppColors
+                                                              .textPrimary,
+                                                          letterSpacing: 0.1,
+                                                        ),
+                                                      ),
+                                                      if (item.description !=
+                                                          null) ...[
+                                                        const SizedBox(
+                                                            height: 4),
+                                                        Text(
+                                                          item.description!,
+                                                          style:
+                                                              const TextStyle(
+                                                            color: AppColors
+                                                                .textSecondary,
+                                                            fontSize: 12,
+                                                            height: 1.3,
+                                                          ),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow
+                                                              .ellipsis,
+                                                        ),
+                                                      ],
+                                                    ],
                                                   ),
                                                 ),
-                                                if (item.description !=
-                                                    null) ...[
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    item.description!,
-                                                    style: const TextStyle(
-                                                      color: AppColors
-                                                          .textSecondary,
-                                                      fontSize: 12,
-                                                      height: 1.3,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ],
+                                                const Icon(
+                                                  Icons.chevron_right_rounded,
+                                                  color: AppColors.textLight,
+                                                  size: 24,
+                                                ),
                                               ],
                                             ),
                                           ),
-                                          const Icon(
-                                            Icons.chevron_right_rounded,
-                                            color: AppColors.textLight,
-                                            size: 24,
-                                          ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ),
