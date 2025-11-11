@@ -7,6 +7,8 @@ import '../theme/app_theme.dart';
 import 'add_item_screen.dart';
 import 'item_detail_screen.dart';
 
+enum ItemFilter { all, active, finished }
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -24,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
       {}; // Map of item ID to whether it has active ongoing record
   bool _isLoading = true;
   int _summaryRefreshKey = 0;
+  ItemFilter _currentFilter = ItemFilter.all;
 
   @override
   void initState() {
@@ -37,19 +40,46 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  void _performSearch(String query) {
+  void _applyFilters() {
     setState(() {
-      if (query.trim().isEmpty) {
-        _filteredItems = _items;
-      } else {
-        // Filter items while maintaining the ongoing days sort order from _items
-        _filteredItems = _items.where((item) {
+      var filtered = _items;
+
+      // Apply search filter
+      final query = _searchController.text;
+      if (query.trim().isNotEmpty) {
+        filtered = filtered.where((item) {
           final searchLower = query.toLowerCase();
           return item.name.toLowerCase().contains(searchLower) ||
               (item.description?.toLowerCase().contains(searchLower) ?? false);
         }).toList();
       }
+
+      // Apply status filter
+      switch (_currentFilter) {
+        case ItemFilter.active:
+          filtered = filtered.where((item) => _hasActiveRecordMap[item.id] == true).toList();
+          break;
+        case ItemFilter.finished:
+          filtered = filtered.where((item) => _hasActiveRecordMap[item.id] != true).toList();
+          break;
+        case ItemFilter.all:
+          // No additional filtering
+          break;
+      }
+
+      _filteredItems = filtered;
     });
+  }
+
+  void _performSearch(String query) {
+    _applyFilters();
+  }
+
+  void _changeFilter(ItemFilter filter) {
+    setState(() {
+      _currentFilter = filter;
+    });
+    _applyFilters();
   }
 
   Future<void> _loadData() async {
@@ -266,6 +296,79 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               onChanged: _performSearch,
               textInputAction: TextInputAction.search,
+            ),
+          ),
+          // Filter Chips
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Row(
+              children: [
+                FilterChip(
+                  label: const Text('All'),
+                  selected: _currentFilter == ItemFilter.all,
+                  onSelected: (selected) {
+                    if (selected) _changeFilter(ItemFilter.all);
+                  },
+                  selectedColor: AppColors.primaryStart.withValues(alpha: 0.2),
+                  checkmarkColor: AppColors.primaryStart,
+                  labelStyle: TextStyle(
+                    color: _currentFilter == ItemFilter.all
+                        ? AppColors.primaryStart
+                        : AppColors.textSecondary,
+                    fontWeight: _currentFilter == ItemFilter.all
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  label: const Text('Active'),
+                  selected: _currentFilter == ItemFilter.active,
+                  onSelected: (selected) {
+                    if (selected) _changeFilter(ItemFilter.active);
+                  },
+                  selectedColor: const Color(0xFF4CAF50).withValues(alpha: 0.2),
+                  checkmarkColor: const Color(0xFF4CAF50),
+                  avatar: _currentFilter == ItemFilter.active
+                      ? null
+                      : Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                  labelStyle: TextStyle(
+                    color: _currentFilter == ItemFilter.active
+                        ? const Color(0xFF4CAF50)
+                        : AppColors.textSecondary,
+                    fontWeight: _currentFilter == ItemFilter.active
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  label: const Text('Finished'),
+                  selected: _currentFilter == ItemFilter.finished,
+                  onSelected: (selected) {
+                    if (selected) _changeFilter(ItemFilter.finished);
+                  },
+                  selectedColor: AppColors.textSecondary.withValues(alpha: 0.2),
+                  checkmarkColor: AppColors.textSecondary,
+                  labelStyle: TextStyle(
+                    color: _currentFilter == ItemFilter.finished
+                        ? AppColors.textSecondary
+                        : AppColors.textSecondary,
+                    fontWeight: _currentFilter == ItemFilter.finished
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+              ],
             ),
           ),
           // Items list
