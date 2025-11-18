@@ -3,10 +3,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/pin_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/database_service.dart';
+import 'services/backup_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await DatabaseService().initDatabase();
+
+  // Run auto-backup if needed
+  BackupService().runAutoBackupIfNeeded();
+
   runApp(const CocuApp());
 }
 

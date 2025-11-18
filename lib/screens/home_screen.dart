@@ -6,6 +6,7 @@ import '../widgets/monthly_summary_widget.dart';
 import '../theme/app_theme.dart';
 import 'add_item_screen.dart';
 import 'item_detail_screen.dart';
+import 'settings_screen.dart';
 
 enum ItemFilter { all, active, finished }
 
@@ -252,15 +253,43 @@ class _HomeScreenState extends State<HomeScreen> {
             elevation: 0,
             actions: [
               PopupMenuButton<String>(
-                onSelected: (value) {
+                onSelected: (value) async {
                   if (value == 'logout') {
                     _showLogoutDialog();
+                  } else if (value == 'settings') {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const SettingsScreen(),
+                      ),
+                    );
+                    // Reload data if backup was restored
+                    if (result == true) {
+                      _loadData();
+                    }
                   }
                 },
                 itemBuilder: (context) => [
                   const PopupMenuItem(
+                    value: 'settings',
+                    child: Row(
+                      children: [
+                        Icon(Icons.settings, size: 20),
+                        SizedBox(width: 8),
+                        Text('Settings & Backup'),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
                     value: 'logout',
-                    child: Text('Logout'),
+                    child: Row(
+                      children: [
+                        Icon(Icons.logout, size: 20),
+                        SizedBox(width: 8),
+                        Text('Logout'),
+                      ],
+                    ),
                   ),
                 ],
               ),

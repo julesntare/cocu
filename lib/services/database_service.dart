@@ -134,7 +134,8 @@ class DatabaseService {
     if (oldVersion < 5) {
       // Add finished_at field to price_history table
       try {
-        await db.execute('ALTER TABLE price_history ADD COLUMN finished_at TEXT');
+        await db
+            .execute('ALTER TABLE price_history ADD COLUMN finished_at TEXT');
       } catch (e) {
         print('Error upgrading database to version 5: $e');
       }
@@ -319,7 +320,8 @@ class DatabaseService {
     return monthlySpendingPerItem;
   }
 
-  Future<Map<String, Map<String, dynamic>>> getMonthlySpendingForItem(int itemId) async {
+  Future<Map<String, Map<String, dynamic>>> getMonthlySpendingForItem(
+      int itemId) async {
     final db = await database;
     final maps = await db.rawQuery('''
       SELECT
@@ -356,9 +358,18 @@ class DatabaseService {
       ORDER BY total_amount DESC
     ''', [monthKey]);
 
-    return maps.map((map) => {
-      'name': map['item_name'] as String,
-      'amount': (map['total_amount'] as num).toDouble(),
-    }).toList();
+    return maps
+        .map((map) => {
+              'name': map['item_name'] as String,
+              'amount': (map['total_amount'] as num).toDouble(),
+            })
+        .toList();
+  }
+
+  // Clear all data (for backup restore)
+  Future<void> clearAllData() async {
+    final db = await database;
+    await db.delete('price_history');
+    await db.delete('items');
   }
 }
