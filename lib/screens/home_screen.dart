@@ -21,7 +21,6 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<Item> _items = [];
   List<Item> _filteredItems = [];
-  Map<int, int> _ongoingDaysMap = {}; // Map of item ID to ongoing days
   Map<int, bool> _hasActiveRecordMap =
       {}; // Map of item ID to whether it has active ongoing record
   bool _isLoading = true;
@@ -57,10 +56,14 @@ class _HomeScreenState extends State<HomeScreen> {
       // Apply status filter
       switch (_currentFilter) {
         case ItemFilter.active:
-          filtered = filtered.where((item) => _hasActiveRecordMap[item.id] == true).toList();
+          filtered = filtered
+              .where((item) => _hasActiveRecordMap[item.id] == true)
+              .toList();
           break;
         case ItemFilter.finished:
-          filtered = filtered.where((item) => _hasActiveRecordMap[item.id] != true).toList();
+          filtered = filtered
+              .where((item) => _hasActiveRecordMap[item.id] != true)
+              .toList();
           break;
         case ItemFilter.all:
           // No additional filtering
@@ -102,8 +105,12 @@ class _HomeScreenState extends State<HomeScreen> {
         bool hasActiveRecord = false;
         if (manualEntries.isNotEmpty) {
           final latestEntry = manualEntries.last;
-          ongoingDays =
-              DateTime.now().difference(latestEntry.recordedAt).inDays;
+          // Calculate days based on calendar date changes, not 24-hour intervals
+          final now = DateTime.now();
+          final startDate = DateTime(latestEntry.recordedAt.year,
+              latestEntry.recordedAt.month, latestEntry.recordedAt.day);
+          final currentDate = DateTime(now.year, now.month, now.day);
+          ongoingDays = currentDate.difference(startDate).inDays;
           // Check if the latest entry has no finishedAt (meaning it's still ongoing)
           hasActiveRecord = latestEntry.finishedAt == null;
         }
@@ -136,7 +143,6 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _items = sortedItems;
         _filteredItems = sortedItems;
-        _ongoingDaysMap = ongoingDaysMap;
         _hasActiveRecordMap = hasActiveRecordMap;
         _isLoading = false;
         _summaryRefreshKey++; // Refresh the summary widget

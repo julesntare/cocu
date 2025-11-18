@@ -371,7 +371,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   }
 
   String _getEndDateWithDaysDifference(DateTime startDate, DateTime endDate) {
-    final daysDifference = endDate.difference(startDate).inDays;
+    // Calculate days based on calendar date changes, not 24-hour intervals
+    final start = DateTime(startDate.year, startDate.month, startDate.day);
+    final end = DateTime(endDate.year, endDate.month, endDate.day);
+    final daysDifference = end.difference(start).inDays;
     final endDateFormatted = DateFormat('MMM dd').format(endDate);
 
     if (daysDifference == 0) {
@@ -402,8 +405,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
   }
 
   String _calculateDaysOngoingFromLatestEntry(DateTime latestEntryDate) {
-    final daysDifference = DateTime.now().difference(latestEntryDate).inDays;
-    
+    // Calculate days based on calendar date changes, not 24-hour intervals
+    final now = DateTime.now();
+    final startDate = DateTime(
+        latestEntryDate.year, latestEntryDate.month, latestEntryDate.day);
+    final currentDate = DateTime(now.year, now.month, now.day);
+    final daysDifference = currentDate.difference(startDate).inDays;
+
     if (daysDifference == 0) {
       return '0 days';
     } else if (daysDifference == 1) {
@@ -443,8 +451,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       // Check if this record is ended and there's a next record
       if (history.finishedAt != null && i < sortedHistory.length - 1) {
         final nextRecord = sortedHistory[i + 1];
-        final gapDays =
-            nextRecord.recordedAt.difference(history.finishedAt!).inDays;
+        // Calculate days based on calendar date changes, not 24-hour intervals
+        final finishedDate = DateTime(history.finishedAt!.year,
+            history.finishedAt!.month, history.finishedAt!.day);
+        final nextDate = DateTime(nextRecord.recordedAt.year,
+            nextRecord.recordedAt.month, nextRecord.recordedAt.day);
+        final gapDays = nextDate.difference(finishedDate).inDays;
 
         // Only add a gap record if there's a gap (more than 0 days)
         if (gapDays > 0) {
@@ -1223,13 +1235,18 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
       };
     }
 
-    // Calculate intervals between purchases
+    // Calculate intervals between purchases based on calendar date changes
     List<int> intervals = [];
     for (int i = 1; i < filteredHistory.length; i++) {
-      final daysDiff = filteredHistory[i]
-          .recordedAt
-          .difference(filteredHistory[i - 1].recordedAt)
-          .inDays;
+      final prevDate = DateTime(
+          filteredHistory[i - 1].recordedAt.year,
+          filteredHistory[i - 1].recordedAt.month,
+          filteredHistory[i - 1].recordedAt.day);
+      final currDate = DateTime(
+          filteredHistory[i].recordedAt.year,
+          filteredHistory[i].recordedAt.month,
+          filteredHistory[i].recordedAt.day);
+      final daysDiff = currDate.difference(prevDate).inDays;
       if (daysDiff > 0) intervals.add(daysDiff);
     }
 
