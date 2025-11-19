@@ -53,14 +53,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
   }
 
   void _initializeTabController() {
-    // Remove old listener and dispose old controller if it exists
-    if (_tabListener != null && _tabController != null) {
-      _tabController!.removeListener(_tabListener!);
-      _tabController!.dispose();
-      _tabController = null;
-      _tabListener = null;
-    }
-
     // Only create tab controller if there are sub-items
     if (_subItems.isEmpty) {
       return;
@@ -127,6 +119,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         monthlySpending = await _databaseService.getMonthlySpendingForItem(widget.item.id!);
       }
 
+      // Dispose old tab controller BEFORE setState to avoid ticker issues
+      if (_tabListener != null && _tabController != null) {
+        _tabController!.removeListener(_tabListener!);
+        _tabController!.dispose();
+        _tabController = null;
+        _tabListener = null;
+      }
+
       setState(() {
         _priceHistory = history;
         _subItems = subItems;
@@ -135,10 +135,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         _monthlySpendingKeys = monthlySpending.keys.toList();
         _currentMonthIndex = 0;
         _isLoading = false;
-
-        // Initialize tab controller (disposal is handled inside _initializeTabController)
-        _initializeTabController();
       });
+
+      // Initialize tab controller AFTER setState to avoid ticker issues
+      _initializeTabController();
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -434,7 +434,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
           }
         }
 
-        _loadDataForSelectedTab(forceReload: true);
+        // Reload data: use full reload for main item, or tab-specific reload for sub-items
+        if (_subItems.isEmpty) {
+          await _loadPriceHistory();
+        } else {
+          await _loadDataForSelectedTab(forceReload: true);
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1088,19 +1093,35 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         await _databaseService.updatePriceHistory(updatedPriceHistory);
 
         // Update item's current price if this is the most recent entry
-        final allHistory =
-            await _databaseService.getPriceHistory(_currentItem!.id!);
-        final mostRecent = allHistory
-            .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
-        if (mostRecent.id == updatedPriceHistory.id) {
-          final updatedItem = _currentItem!.copyWith(
-            currentPrice: price,
-            updatedAt: DateTime.now(),
-          );
-          await _databaseService.updateItem(updatedItem);
+        if (_subItems.isEmpty) {
+          final allHistory =
+              await _databaseService.getPriceHistory(_currentItem!.id!, includeSubItems: false);
+          final mostRecent = allHistory
+              .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
+          if (mostRecent.id == updatedPriceHistory.id) {
+            final updatedItem = _currentItem!.copyWith(
+              currentPrice: price,
+              updatedAt: DateTime.now(),
+            );
+            await _databaseService.updateItem(updatedItem);
+          }
+          await _loadPriceHistory();
+        } else {
+          final subItem = _subItems[_selectedTabIndex];
+          final allHistory = await _databaseService.getPriceHistoryForSubItem(
+              _currentItem!.id!, subItem.id!);
+          final mostRecent = allHistory
+              .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
+          if (mostRecent.id == updatedPriceHistory.id) {
+            final updatedSubItem = subItem.copyWith(
+              currentPrice: price,
+              updatedAt: DateTime.now(),
+            );
+            await _databaseService.updateSubItem(updatedSubItem);
+            _subItems[_selectedTabIndex] = updatedSubItem;
+          }
+          await _loadDataForSelectedTab(forceReload: true);
         }
-
-        _loadPriceHistory();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1256,7 +1277,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         await _databaseService.updatePriceHistoryFinishedAt(
             history.id!, result);
 
-        _loadPriceHistory();
+        // Reload data: use full reload for main item, or tab-specific reload for sub-items
+        if (_subItems.isEmpty) {
+          await _loadPriceHistory();
+        } else {
+          await _loadDataForSelectedTab(forceReload: true);
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1278,7 +1304,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
       // Set the finishedAt date to null to unmark as ended
       await _databaseService.updatePriceHistoryFinishedAt(history.id!, null);
 
-      _loadPriceHistory();
+      // Reload data: use full reload for main item, or tab-specific reload for sub-items
+      if (_subItems.isEmpty) {
+        await _loadPriceHistory();
+      } else {
+        await _loadDataForSelectedTab(forceReload: true);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1350,27 +1381,50 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
       try {
         await _databaseService.deletePriceHistory(history.id!);
 
-        // Update item's current price if this was the most recent entry
-        final allHistory =
-            await _databaseService.getPriceHistory(_currentItem!.id!);
-        if (allHistory.isNotEmpty) {
-          final mostRecent = allHistory
-              .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
-          final updatedItem = _currentItem!.copyWith(
-            currentPrice: mostRecent.price,
-            updatedAt: DateTime.now(),
-          );
-          await _databaseService.updateItem(updatedItem);
+        // Update current price based on whether this is main item or sub-item
+        if (_subItems.isEmpty) {
+          // Main item - update item's current price
+          final allHistory =
+              await _databaseService.getPriceHistory(_currentItem!.id!, includeSubItems: false);
+          if (allHistory.isNotEmpty) {
+            final mostRecent = allHistory
+                .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
+            final updatedItem = _currentItem!.copyWith(
+              currentPrice: mostRecent.price,
+              updatedAt: DateTime.now(),
+            );
+            await _databaseService.updateItem(updatedItem);
+          } else {
+            // If no history remains, set current price to 0 or some default
+            final updatedItem = _currentItem!.copyWith(
+              currentPrice: 0.0,
+              updatedAt: DateTime.now(),
+            );
+            await _databaseService.updateItem(updatedItem);
+          }
         } else {
-          // If no history remains, set current price to 0 or some default
-          final updatedItem = _currentItem!.copyWith(
-            currentPrice: 0.0,
-            updatedAt: DateTime.now(),
-          );
-          await _databaseService.updateItem(updatedItem);
+          // Sub-item - update sub-item's current price
+          final subItem = _subItems[_selectedTabIndex];
+          final allHistory = await _databaseService.getPriceHistoryForSubItem(
+              _currentItem!.id!, subItem.id!);
+          if (allHistory.isNotEmpty) {
+            final mostRecent = allHistory
+                .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
+            final updatedSubItem = subItem.copyWith(
+              currentPrice: mostRecent.price,
+              updatedAt: DateTime.now(),
+            );
+            await _databaseService.updateSubItem(updatedSubItem);
+            _subItems[_selectedTabIndex] = updatedSubItem;
+          }
         }
 
-        _loadPriceHistory();
+        // Reload data: use full reload for main item, or tab-specific reload for sub-items
+        if (_subItems.isEmpty) {
+          await _loadPriceHistory();
+        } else {
+          await _loadDataForSelectedTab(forceReload: true);
+        }
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1749,13 +1803,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                 IconButton(
                   icon: const Icon(Icons.edit),
                   tooltip: 'Edit Item',
-                  onPressed: () {
-                    Navigator.push(
+                  onPressed: () async {
+                    await Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => AddItemScreen(item: _currentItem),
                       ),
-                    ).then((_) => _loadPriceHistory());
+                    );
+                    await _loadPriceHistory();
                   },
                 ),
               IconButton(
