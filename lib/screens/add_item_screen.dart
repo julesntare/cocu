@@ -54,10 +54,15 @@ class _AddItemScreenState extends State<AddItemScreen> {
     try {
       final now = DateTime.now();
       final createdDate = widget.item?.createdAt ?? _selectedDate ?? now;
+
+      // Parse price, default to 0.0 if not provided
+      final priceText = _priceController.text.replaceAll(',', '').trim();
+      final price = priceText.isEmpty ? 0.0 : double.parse(priceText);
+
       final item = Item(
         id: widget.item?.id,
         name: _nameController.text.trim(),
-        currentPrice: double.parse(_priceController.text.replaceAll(',', '')),
+        currentPrice: price,
         description: _descriptionController.text.trim().isEmpty
             ? null
             : _descriptionController.text.trim(),
@@ -173,7 +178,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
             TextFormField(
               controller: _priceController,
               decoration: InputDecoration(
-                labelText: 'Price',
+                labelText: 'Price (Optional)',
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -205,13 +210,13 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 }),
               ],
               validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter a price';
-                }
-                final cleanValue = value.replaceAll(',', '');
-                final price = double.tryParse(cleanValue);
-                if (price == null || price <= 0) {
-                  return 'Please enter a valid price';
+                // Price is now optional, only validate if provided
+                if (value != null && value.trim().isNotEmpty) {
+                  final cleanValue = value.replaceAll(',', '');
+                  final price = double.tryParse(cleanValue);
+                  if (price == null || price <= 0) {
+                    return 'Please enter a valid price';
+                  }
                 }
                 return null;
               },

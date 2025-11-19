@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'database_service.dart';
 import '../models/item.dart';
-import '../models/price_history.dart';
+import '../models/sub_item.dart';
 
 class BackupService {
   static final BackupService _instance = BackupService._internal();
@@ -31,10 +31,18 @@ class BackupService {
     final items = await _dbService.getAllItems();
     final priceHistory = await _dbService.getAllPriceHistory();
 
+    // Get all sub-items for all items
+    List<SubItem> allSubItems = [];
+    for (var item in items) {
+      final subItems = await _dbService.getSubItemsByItemId(item.id!);
+      allSubItems.addAll(subItems);
+    }
+
     return {
-      'version': '1.0.0',
+      'version': '1.1.0', // Bumped version to indicate sub-items support
       'export_date': DateTime.now().toIso8601String(),
       'items': items.map((item) => item.toMap()).toList(),
+      'sub_items': allSubItems.map((subItem) => subItem.toMap()).toList(),
       'price_history': priceHistory.map((ph) => ph.toMap()).toList(),
     };
   }
@@ -48,17 +56,31 @@ class BackupService {
     // Clear existing data
     await _dbService.clearAllData();
 
-    // Import items
+    // Import items first (parent entities)
     if (data['items'] != null) {
       for (var itemMap in data['items']) {
-        await _dbService.insertItem(Item.fromMap(itemMap));
+        final item = Item.fromMap(itemMap);
+        // Insert item without creating initial price history
+        final db = await _dbService.database;
+        await db.insert('items', item.toMap());
       }
     }
 
-    // Import price history
+    // Import sub-items second (child entities of items)
+    if (data['sub_items'] != null) {
+      for (var subItemMap in data['sub_items']) {
+        final subItem = SubItem.fromMap(subItemMap);
+        // Insert sub-item without creating initial price history
+        final db = await _dbService.database;
+        await db.insert('sub_items', subItem.toMap());
+      }
+    }
+
+    // Import price history last (references both items and sub-items)
     if (data['price_history'] != null) {
       for (var phMap in data['price_history']) {
-        await _dbService.insertPriceHistory(PriceHistory.fromMap(phMap));
+        final db = await _dbService.database;
+        await db.insert('price_history', phMap);
       }
     }
   }

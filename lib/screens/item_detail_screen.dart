@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import 'dart:math' as math;
 import '../models/item.dart';
+import '../models/sub_item.dart';
 import '../models/price_history.dart';
 import '../services/database_service.dart';
 import '../theme/app_theme.dart';
@@ -18,14 +19,22 @@ class ItemDetailScreen extends StatefulWidget {
   State<ItemDetailScreen> createState() => _ItemDetailScreenState();
 }
 
-class _ItemDetailScreenState extends State<ItemDetailScreen> {
+class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerProviderStateMixin {
   final DatabaseService _databaseService = DatabaseService();
   List<PriceHistory> _priceHistory = [];
+  List<SubItem> _subItems = [];
   Map<String, Map<String, dynamic>> _monthlySpending = {};
   List<String> _monthlySpendingKeys = [];
   int _currentMonthIndex = 0;
   bool _isLoading = true;
   Item? _currentItem;
+  TabController? _tabController;
+  int _selectedTabIndex = 0;
+  VoidCallback? _tabListener;
+
+  // Cache for sub-items data to avoid reloading on tab switch
+  final Map<int, List<PriceHistory>> _subItemHistoryCache = {};
+  final Map<int, Map<String, Map<String, dynamic>>> _subItemMonthlySpendingCache = {};
 
   @override
   void initState() {
@@ -34,24 +43,101 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     _loadPriceHistory();
   }
 
+  @override
+  void dispose() {
+    if (_tabListener != null && _tabController != null) {
+      _tabController!.removeListener(_tabListener!);
+    }
+    _tabController?.dispose();
+    super.dispose();
+  }
+
+  void _initializeTabController() {
+    // Remove old listener and dispose old controller if it exists
+    if (_tabListener != null && _tabController != null) {
+      _tabController!.removeListener(_tabListener!);
+      _tabController!.dispose();
+      _tabController = null;
+      _tabListener = null;
+    }
+
+    // Only create tab controller if there are sub-items
+    if (_subItems.isEmpty) {
+      return;
+    }
+
+    _tabController = TabController(
+      length: _subItems.length, // Only sub-item tabs
+      vsync: this,
+    );
+
+    _tabListener = () {
+      if (_tabController != null && !_tabController!.indexIsChanging) {
+        setState(() {
+          _selectedTabIndex = _tabController!.index;
+          _loadDataForSelectedTab();
+        });
+      }
+    };
+
+    _tabController!.addListener(_tabListener!);
+  }
+
   Future<void> _loadPriceHistory() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      final history = await _databaseService.getPriceHistory(widget.item.id!);
+      final subItems = await _databaseService.getSubItemsByItemId(widget.item.id!);
       final updatedItem = await _databaseService.getItemById(widget.item.id!);
-      final monthlySpending =
-          await _databaseService.getMonthlySpendingForItem(widget.item.id!);
+
+      List<PriceHistory> history;
+      Map<String, Map<String, dynamic>> monthlySpending;
+
+      // Clear cache
+      _subItemHistoryCache.clear();
+      _subItemMonthlySpendingCache.clear();
+
+      // If there are sub-items, preload all sub-items data
+      if (subItems.isNotEmpty) {
+        // Preload all sub-items data in parallel
+        final futures = <Future>[];
+        for (int i = 0; i < subItems.length; i++) {
+          final subItem = subItems[i];
+          futures.add(
+            Future.wait([
+              _databaseService.getPriceHistoryForSubItem(widget.item.id!, subItem.id!),
+              _databaseService.getMonthlySpendingForSubItem(widget.item.id!, subItem.id!),
+            ]).then((results) {
+              _subItemHistoryCache[i] = results[0] as List<PriceHistory>;
+              _subItemMonthlySpendingCache[i] = results[1] as Map<String, Map<String, dynamic>>;
+            })
+          );
+        }
+
+        await Future.wait(futures);
+
+        // Use first sub-item's data
+        history = _subItemHistoryCache[0]!;
+        monthlySpending = _subItemMonthlySpendingCache[0]!;
+      } else {
+        // No sub-items, load parent item data
+        history = await _databaseService.getPriceHistory(widget.item.id!, includeSubItems: false);
+        monthlySpending = await _databaseService.getMonthlySpendingForItem(widget.item.id!);
+      }
 
       setState(() {
         _priceHistory = history;
+        _subItems = subItems;
         _currentItem = updatedItem ?? widget.item;
         _monthlySpending = monthlySpending;
         _monthlySpendingKeys = monthlySpending.keys.toList();
         _currentMonthIndex = 0;
         _isLoading = false;
+
+        // Initialize tab controller (disposal is handled inside _initializeTabController)
+        _initializeTabController();
       });
     } catch (e) {
       setState(() {
@@ -65,10 +151,65 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     }
   }
 
+  Future<void> _loadDataForSelectedTab({bool forceReload = false}) async {
+    // Use cached data if available and not forcing reload
+    if (!forceReload &&
+        _subItemHistoryCache.containsKey(_selectedTabIndex) &&
+        _subItemMonthlySpendingCache.containsKey(_selectedTabIndex)) {
+      setState(() {
+        _priceHistory = _subItemHistoryCache[_selectedTabIndex]!;
+        _monthlySpending = _subItemMonthlySpendingCache[_selectedTabIndex]!;
+        _monthlySpendingKeys = _monthlySpending.keys.toList();
+        _currentMonthIndex = 0;
+      });
+      return;
+    }
+
+    // Load data from database
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final subItem = _subItems[_selectedTabIndex];
+      final history = await _databaseService.getPriceHistoryForSubItem(
+          widget.item.id!, subItem.id!);
+      final monthlySpending =
+          await _databaseService.getMonthlySpendingForSubItem(
+              widget.item.id!, subItem.id!);
+
+      setState(() {
+        _priceHistory = history;
+        _monthlySpending = monthlySpending;
+        _monthlySpendingKeys = monthlySpending.keys.toList();
+        _currentMonthIndex = 0;
+        _isLoading = false;
+      });
+
+      // Update cache with fresh data
+      _subItemHistoryCache[_selectedTabIndex] = history;
+      _subItemMonthlySpendingCache[_selectedTabIndex] = monthlySpending;
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading data: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _addPriceEntry() async {
+    // Determine current price based on whether sub-items exist
+    final currentPrice = _subItems.isEmpty
+        ? _currentItem!.currentPrice
+        : _subItems[_selectedTabIndex].currentPrice;
+
     // Initialize with current price as default value
     final priceController = TextEditingController(
-      text: NumberFormat('#,###').format(_currentItem!.currentPrice.round()),
+      text: NumberFormat('#,###').format(currentPrice.round()),
     );
     DateTime selectedDate = DateTime.now();
 
@@ -247,26 +388,53 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
         final price = double.parse(priceText.replaceAll(',', ''));
         final recordedAt = result['date'] as DateTime;
 
-        final priceHistory = PriceHistory(
-          itemId: _currentItem!.id!,
-          price: price,
-          recordedAt: recordedAt,
-          createdAt: DateTime.now(),
-          entryType: 'manual',
-        );
-
-        await _databaseService.insertPriceHistory(priceHistory);
-
-        // Update item's current price if it's different
-        if (price != _currentItem!.currentPrice) {
-          final updatedItem = _currentItem!.copyWith(
-            currentPrice: price,
-            updatedAt: DateTime.now(),
+        if (_subItems.isEmpty) {
+          // Main item (only when no sub-items)
+          final priceHistory = PriceHistory(
+            itemId: _currentItem!.id!,
+            price: price,
+            recordedAt: recordedAt,
+            createdAt: DateTime.now(),
+            entryType: 'manual',
           );
-          await _databaseService.updateItem(updatedItem);
+
+          await _databaseService.insertPriceHistory(priceHistory);
+
+          // Update item's current price if it's different
+          if (price != _currentItem!.currentPrice) {
+            final updatedItem = _currentItem!.copyWith(
+              currentPrice: price,
+              updatedAt: DateTime.now(),
+            );
+            await _databaseService.updateItem(updatedItem);
+            _currentItem = updatedItem;
+          }
+        } else {
+          // Sub-item
+          final subItem = _subItems[_selectedTabIndex];
+          final priceHistory = PriceHistory(
+            itemId: _currentItem!.id!,
+            subItemId: subItem.id!,
+            price: price,
+            recordedAt: recordedAt,
+            createdAt: DateTime.now(),
+            entryType: 'manual',
+          );
+
+          await _databaseService.insertPriceHistory(priceHistory);
+
+          // Update sub-item's current price if it's different
+          if (price != subItem.currentPrice) {
+            final updatedSubItem = subItem.copyWith(
+              currentPrice: price,
+              updatedAt: DateTime.now(),
+            );
+            await _databaseService.updateSubItem(updatedSubItem);
+            _subItems[_selectedTabIndex] = updatedSubItem;
+          }
         }
 
-        _loadPriceHistory();
+        _loadDataForSelectedTab(forceReload: true);
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -1219,6 +1387,224 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     }
   }
 
+  Future<void> _addSubItem() async {
+    final nameController = TextEditingController();
+    final priceController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Add Sub-Item'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: 'Sub-Item Name (e.g., 5kg, 10kg, 1L)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: priceController,
+                decoration: InputDecoration(
+                  labelText: 'Initial Price (Rwf)',
+                  prefixText: 'Rwf ',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  TextInputFormatter.withFunction((oldValue, newValue) {
+                    if (newValue.text.isEmpty) {
+                      return newValue;
+                    }
+                    final number = int.parse(newValue.text);
+                    final formatted = NumberFormat('#,###').format(number);
+                    return TextEditingValue(
+                      text: formatted,
+                      selection: TextSelection.collapsed(offset: formatted.length),
+                    );
+                  }),
+                ],
+              ),
+              const SizedBox(height: 16),
+              InkWell(
+                onTap: () async {
+                  final date = await showDatePicker(
+                    context: context,
+                    initialDate: selectedDate,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                    builder: (context, child) {
+                      return Theme(
+                        data: Theme.of(context).copyWith(
+                          colorScheme: const ColorScheme.light(
+                            primary: Color(0xFFFF8C00),
+                            onPrimary: Colors.white,
+                          ),
+                        ),
+                        child: child!,
+                      );
+                    },
+                  );
+                  if (date != null) {
+                    setState(() {
+                      selectedDate = date;
+                    });
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.grey.shade50,
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today,
+                          color: Color(0xFFFF9500), size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Date',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            Text(
+                              DateFormat('MMM dd, yyyy').format(selectedDate),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                final priceText = priceController.text.replaceAll(',', '').trim();
+                if (name.isNotEmpty && priceText.isNotEmpty) {
+                  Navigator.of(context).pop({
+                    'name': name,
+                    'price': double.parse(priceText),
+                    'date': selectedDate,
+                  });
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF8C00),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Add'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      try {
+        final selectedDate = result['date'] as DateTime;
+        final subItem = SubItem(
+          itemId: widget.item.id!,
+          name: result['name'] as String,
+          currentPrice: result['price'] as double,
+          createdAt: selectedDate,
+          updatedAt: selectedDate,
+        );
+
+        await _databaseService.insertSubItem(subItem);
+        await _loadPriceHistory();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Sub-item added successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error adding sub-item: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _deleteSubItem(SubItem subItem) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Sub-Item'),
+        content: Text('Are you sure you want to delete "${subItem.name}"? This will also delete all its price records.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _databaseService.deleteSubItem(subItem.id!);
+        await _loadPriceHistory();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Sub-item deleted successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting sub-item: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Map<String, dynamic> _getPurchaseConsistencyAnalysis() {
     // Filter out automatic entries and sort by date
     final filteredHistory = _priceHistory
@@ -1333,7 +1719,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_currentItem == null) {
+    if (_currentItem == null || (_subItems.isNotEmpty && _tabController == null)) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -1341,7 +1727,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
 
     return Scaffold(
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
+        preferredSize: Size.fromHeight(_subItems.isEmpty || _tabController == null ? 60 : 110),
         child: Container(
           decoration: const BoxDecoration(
             gradient: AppColors.primaryGradient,
@@ -1351,28 +1737,84 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
             backgroundColor: Colors.transparent,
             elevation: 0,
             actions: [
+              if (_subItems.isNotEmpty) // Show delete button for sub-items when they exist
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Delete Sub-Item',
+                  onPressed: () {
+                    _deleteSubItem(_subItems[_selectedTabIndex]);
+                  },
+                ),
+              if (_subItems.isEmpty) // Show edit button only when no sub-items (main item only)
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: 'Edit Item',
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AddItemScreen(item: _currentItem),
+                      ),
+                    ).then((_) => _loadPriceHistory());
+                  },
+                ),
               IconButton(
-                icon: const Icon(Icons.edit),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => AddItemScreen(item: _currentItem),
-                    ),
-                  ).then((_) => _loadPriceHistory());
-                },
+                icon: const Icon(Icons.add_circle_outline),
+                tooltip: 'Add Sub-Item',
+                onPressed: _addSubItem,
               ),
               IconButton(
                 icon: const Icon(Icons.add),
+                tooltip: 'Add Price Entry',
                 onPressed: _addPriceEntry,
               ),
             ],
+            bottom: _subItems.isEmpty || _tabController == null
+                ? null
+                : TabBar(
+                    controller: _tabController,
+                    isScrollable: true,
+                    indicatorColor: Colors.white,
+                    indicatorWeight: 3,
+                    labelColor: Colors.white,
+                    unselectedLabelColor: Colors.white70,
+                    tabs: _subItems.map((subItem) => Tab(
+                      child: Row(
+                        children: [
+                          const Icon(Icons.category, size: 16),
+                          const SizedBox(width: 8),
+                          Text(subItem.name),
+                        ],
+                      ),
+                    )).toList(),
+                  ),
           ),
         ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
+          : _subItems.isEmpty || _tabController == null
+              ? _buildItemContent()
+              : TabBarView(
+                  controller: _tabController,
+                  children: _subItems.map((subItem) => _buildItemContent()).toList(),
+                ),
+    );
+  }
+
+  Widget _buildItemContent() {
+    // Get current item name and price based on whether sub-items exist
+    final String displayName = _subItems.isEmpty
+        ? _currentItem!.name
+        : _subItems[_selectedTabIndex].name;
+    final double currentPrice = _subItems.isEmpty
+        ? _currentItem!.currentPrice
+        : _subItems[_selectedTabIndex].currentPrice;
+    final String? description = _subItems.isEmpty
+        ? _currentItem!.description
+        : null;
+
+    return ListView(
               padding: const EdgeInsets.all(16),
               children: [
                 // Item Info Card
@@ -1412,7 +1854,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                               ),
                               child: Center(
                                 child: Text(
-                                  _currentItem!.name[0].toUpperCase(),
+                                  displayName[0].toUpperCase(),
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 32,
@@ -1427,17 +1869,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    _currentItem!.name,
+                                    displayName,
                                     style: const TextStyle(
                                       fontSize: 22,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.white,
                                     ),
                                   ),
-                                  if (_currentItem!.description != null) ...[
+                                  if (description != null) ...[
                                     const SizedBox(height: 4),
                                     Text(
-                                      _currentItem!.description!,
+                                      description,
                                       style: TextStyle(
                                         fontSize: 13,
                                         color: Colors.white
@@ -1475,7 +1917,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      '${NumberFormat('#,###').format(_currentItem!.currentPrice.round())} Rwf',
+                                      '${NumberFormat('#,###').format(currentPrice.round())} Rwf',
                                       style: const TextStyle(
                                         fontSize: 26,
                                         fontWeight: FontWeight.bold,
@@ -1910,7 +2352,6 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
                   ),
                 ),
               ],
-            ),
-    );
+            );
   }
 }

@@ -1,6 +1,7 @@
 class PriceHistory {
   final int? id;
   final int itemId;
+  final int? subItemId; // Optional sub-item ID
   final double price;
   final DateTime recordedAt;
   final DateTime? createdAt;
@@ -10,6 +11,7 @@ class PriceHistory {
   PriceHistory({
     this.id,
     required this.itemId,
+    this.subItemId,
     required this.price,
     required this.recordedAt,
     this.createdAt,
@@ -21,6 +23,7 @@ class PriceHistory {
     return {
       'id': id,
       'item_id': itemId,
+      'sub_item_id': subItemId,
       'price': price,
       'recorded_at': recordedAt.toIso8601String(),
       'created_at':
@@ -34,6 +37,7 @@ class PriceHistory {
     return PriceHistory(
       id: map['id'],
       itemId: map['item_id'],
+      subItemId: map['sub_item_id'],
       price: map['price'],
       recordedAt: DateTime.parse(map['recorded_at']),
       createdAt:
@@ -47,6 +51,7 @@ class PriceHistory {
   PriceHistory copyWith({
     int? id,
     int? itemId,
+    int? subItemId,
     double? price,
     DateTime? recordedAt,
     DateTime? createdAt,
@@ -56,6 +61,7 @@ class PriceHistory {
     return PriceHistory(
       id: id ?? this.id,
       itemId: itemId ?? this.itemId,
+      subItemId: subItemId ?? this.subItemId,
       price: price ?? this.price,
       recordedAt: recordedAt ?? this.recordedAt,
       createdAt: createdAt ?? this.createdAt,

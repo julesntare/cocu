@@ -2,6 +2,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/item.dart';
 import '../models/price_history.dart';
+import '../models/sub_item.dart';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -19,7 +20,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'cocu.db');
     return await openDatabase(
       path,
-      version: 5, // Increment version to add finished_date field
+      version: 6, // Increment version to add sub_items support
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -38,15 +39,29 @@ class DatabaseService {
     ''');
 
     await db.execute('''
+      CREATE TABLE sub_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        current_price REAL NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
       CREATE TABLE price_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         item_id INTEGER NOT NULL,
+        sub_item_id INTEGER,
         price REAL NOT NULL,
         recorded_at TEXT NOT NULL,
         created_at TEXT NOT NULL,
         finished_at TEXT,
         entry_type TEXT NOT NULL DEFAULT 'manual',
-        FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
+        FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE,
+        FOREIGN KEY (sub_item_id) REFERENCES sub_items (id) ON DELETE CASCADE
       )
     ''');
   }
@@ -138,6 +153,30 @@ class DatabaseService {
             .execute('ALTER TABLE price_history ADD COLUMN finished_at TEXT');
       } catch (e) {
         print('Error upgrading database to version 5: $e');
+      }
+    }
+
+    if (oldVersion < 6) {
+      // Add sub_items table and sub_item_id to price_history
+      try {
+        // Create sub_items table
+        await db.execute('''
+          CREATE TABLE sub_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            current_price REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
+          )
+        ''');
+
+        // Add sub_item_id column to price_history
+        await db.execute(
+            'ALTER TABLE price_history ADD COLUMN sub_item_id INTEGER');
+      } catch (e) {
+        print('Error upgrading database to version 6: $e');
       }
     }
   }
@@ -249,12 +288,20 @@ class DatabaseService {
     );
   }
 
-  Future<List<PriceHistory>> getPriceHistory(int itemId) async {
+  Future<List<PriceHistory>> getPriceHistory(int itemId,
+      {bool includeSubItems = true}) async {
     final db = await database;
+    String whereClause = 'item_id = ?';
+    List<dynamic> whereArgs = [itemId];
+
+    if (!includeSubItems) {
+      whereClause += ' AND sub_item_id IS NULL';
+    }
+
     final maps = await db.query(
       'price_history',
-      where: 'item_id = ?',
-      whereArgs: [itemId],
+      where: whereClause,
+      whereArgs: whereArgs,
       orderBy: 'recorded_at ASC',
     );
     return maps.map((map) => PriceHistory.fromMap(map)).toList();
@@ -366,10 +413,118 @@ class DatabaseService {
         .toList();
   }
 
+  // SubItem CRUD operations
+  Future<int> insertSubItem(SubItem subItem) async {
+    final db = await database;
+    final id = await db.insert('sub_items', subItem.toMap());
+
+    // Insert initial price history for sub-item
+    await insertPriceHistory(PriceHistory(
+      itemId: subItem.itemId,
+      subItemId: id,
+      price: subItem.currentPrice,
+      recordedAt: subItem.createdAt,
+      createdAt: DateTime.now(),
+      entryType: 'manual',
+    ));
+
+    return id;
+  }
+
+  Future<List<SubItem>> getSubItemsByItemId(int itemId) async {
+    final db = await database;
+    final maps = await db.query(
+      'sub_items',
+      where: 'item_id = ?',
+      whereArgs: [itemId],
+      orderBy: 'created_at ASC',
+    );
+    return maps.map((map) => SubItem.fromMap(map)).toList();
+  }
+
+  Future<SubItem?> getSubItemById(int id) async {
+    final db = await database;
+    final maps = await db.query('sub_items', where: 'id = ?', whereArgs: [id]);
+    if (maps.isNotEmpty) {
+      return SubItem.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  Future<int> updateSubItem(SubItem subItem) async {
+    final db = await database;
+
+    // Get the old sub-item to check if price changed
+    final oldSubItem = await getSubItemById(subItem.id!);
+    if (oldSubItem != null && oldSubItem.currentPrice != subItem.currentPrice) {
+      // Insert new price history with automatic entry type
+      await insertPriceHistory(PriceHistory(
+        itemId: subItem.itemId,
+        subItemId: subItem.id!,
+        price: subItem.currentPrice,
+        recordedAt: subItem.updatedAt,
+        createdAt: DateTime.now(),
+        entryType: 'automatic',
+      ));
+    }
+
+    return await db.update(
+      'sub_items',
+      subItem.toMap(),
+      where: 'id = ?',
+      whereArgs: [subItem.id],
+    );
+  }
+
+  Future<int> deleteSubItem(int id) async {
+    final db = await database;
+    return await db.delete('sub_items', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Get price history for a specific sub-item
+  Future<List<PriceHistory>> getPriceHistoryForSubItem(
+      int itemId, int subItemId) async {
+    final db = await database;
+    final maps = await db.query(
+      'price_history',
+      where: 'item_id = ? AND sub_item_id = ?',
+      whereArgs: [itemId, subItemId],
+      orderBy: 'recorded_at ASC',
+    );
+    return maps.map((map) => PriceHistory.fromMap(map)).toList();
+  }
+
+  // Get monthly spending for a specific sub-item
+  Future<Map<String, Map<String, dynamic>>> getMonthlySpendingForSubItem(
+      int itemId, int subItemId) async {
+    final db = await database;
+    final maps = await db.rawQuery('''
+      SELECT
+        strftime('%Y-%m', recorded_at) as month,
+        COUNT(*) as frequency,
+        SUM(price) as total_spent
+      FROM price_history
+      WHERE item_id = ? AND sub_item_id = ? AND entry_type = 'manual'
+      GROUP BY strftime('%Y-%m', recorded_at)
+      ORDER BY month DESC
+    ''', [itemId, subItemId]);
+
+    Map<String, Map<String, dynamic>> monthlySpending = {};
+    for (var map in maps) {
+      final month = map['month'] as String;
+      monthlySpending[month] = {
+        'frequency': map['frequency'] as int,
+        'total_spent': (map['total_spent'] as num).toDouble(),
+      };
+    }
+    return monthlySpending;
+  }
+
   // Clear all data (for backup restore)
   Future<void> clearAllData() async {
     final db = await database;
     await db.delete('price_history');
+    await db.delete('sub_items');
     await db.delete('items');
   }
 }
