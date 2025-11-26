@@ -211,6 +211,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
     final priceController = TextEditingController(
       text: NumberFormat('#,###').format(currentPrice.round()),
     );
+    final descriptionController = TextEditingController();
     DateTime selectedDate = DateTime.now();
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -289,6 +290,27 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                 ],
               ),
               const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                decoration: InputDecoration(
+                  labelText: 'Description (Optional)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                  ),
+                  prefixIcon:
+                      const Icon(Icons.description, color: Color(0xFFFFB700)),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+                maxLines: 2,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 16),
               InkWell(
                 onTap: () async {
                   final date = await showDatePicker(
@@ -364,6 +386,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                     Navigator.pop(context, {
                       'price': priceController.text,
                       'date': selectedDate,
+                      'description': descriptionController.text.trim(),
                     });
                   }
                 },
@@ -387,6 +410,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         final priceText = result['price']!;
         final price = double.parse(priceText.replaceAll(',', ''));
         final recordedAt = result['date'] as DateTime;
+        final description = result['description'] as String?;
 
         if (_subItems.isEmpty) {
           // Main item (only when no sub-items)
@@ -396,6 +420,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
             recordedAt: recordedAt,
             createdAt: DateTime.now(),
             entryType: 'manual',
+            description: description?.isEmpty == true ? null : description,
           );
 
           await _databaseService.insertPriceHistory(priceHistory);
@@ -419,6 +444,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
             recordedAt: recordedAt,
             createdAt: DateTime.now(),
             entryType: 'manual',
+            description: description?.isEmpty == true ? null : description,
           );
 
           await _databaseService.insertPriceHistory(priceHistory);
@@ -725,6 +751,57 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                               fontWeight: FontWeight.w500,
                             ),
                           ),
+                          if (history.description != null &&
+                              history.description!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            InkWell(
+                              onTap: () {
+                                showDialog(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    title: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.description,
+                                          color: Color(0xFFFF8C00),
+                                          size: 20,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        const Text(
+                                          'Description',
+                                          style: TextStyle(fontSize: 18),
+                                        ),
+                                      ],
+                                    ),
+                                    content: SingleChildScrollView(
+                                      child: Text(
+                                        history.description!,
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        child: const Text('Close'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                              child: Text(
+                                history.description!,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade700,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -907,6 +984,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
     final priceController = TextEditingController(
       text: NumberFormat('#,###').format(history.price.round()),
     );
+    final descriptionController = TextEditingController(
+      text: history.description ?? '',
+    );
     DateTime selectedDate = history.recordedAt;
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -985,6 +1065,27 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                 ],
               ),
               const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                decoration: InputDecoration(
+                  labelText: 'Description (Optional)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                  ),
+                  prefixIcon:
+                      const Icon(Icons.description, color: Color(0xFFFFB700)),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+                maxLines: 2,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 16),
               InkWell(
                 onTap: () async {
                   final date = await showDatePicker(
@@ -1060,6 +1161,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                     Navigator.pop(context, {
                       'price': priceController.text,
                       'date': selectedDate,
+                      'description': descriptionController.text.trim(),
                     });
                   }
                 },
@@ -1084,10 +1186,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         final priceText = result['price']!;
         final price = double.parse(priceText.replaceAll(',', ''));
         final recordedAt = result['date'] as DateTime;
+        final description = result['description'] as String?;
 
         final updatedPriceHistory = history.copyWith(
           price: price,
           recordedAt: recordedAt,
+          description: description?.isEmpty == true ? null : description,
         );
 
         await _databaseService.updatePriceHistory(updatedPriceHistory);

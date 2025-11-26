@@ -20,7 +20,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'cocu.db');
     return await openDatabase(
       path,
-      version: 6, // Increment version to add sub_items support
+      version: 7, // Increment version to add description to price_history
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -60,6 +60,7 @@ class DatabaseService {
         created_at TEXT NOT NULL,
         finished_at TEXT,
         entry_type TEXT NOT NULL DEFAULT 'manual',
+        description TEXT,
         FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE,
         FOREIGN KEY (sub_item_id) REFERENCES sub_items (id) ON DELETE CASCADE
       )
@@ -177,6 +178,16 @@ class DatabaseService {
             'ALTER TABLE price_history ADD COLUMN sub_item_id INTEGER');
       } catch (e) {
         print('Error upgrading database to version 6: $e');
+      }
+    }
+
+    if (oldVersion < 7) {
+      // Add description column to price_history
+      try {
+        await db.execute(
+            'ALTER TABLE price_history ADD COLUMN description TEXT');
+      } catch (e) {
+        print('Error upgrading database to version 7: $e');
       }
     }
   }

@@ -7,6 +7,7 @@ class PriceHistory {
   final DateTime? createdAt;
   final DateTime? finishedAt;
   final String entryType; // 'manual' or 'automatic'
+  final String? description; // Optional description for the price entry
 
   PriceHistory({
     this.id,
@@ -17,6 +18,7 @@ class PriceHistory {
     this.createdAt,
     this.finishedAt,
     this.entryType = 'manual',
+    this.description,
   });
 
   Map<String, dynamic> toMap() {
@@ -30,6 +32,7 @@ class PriceHistory {
           createdAt?.toIso8601String() ?? recordedAt.toIso8601String(),
       'finished_at': finishedAt?.toIso8601String(),
       'entry_type': entryType,
+      'description': description,
     };
   }
 
@@ -45,6 +48,7 @@ class PriceHistory {
       finishedAt:
           map['finished_at'] != null ? DateTime.parse(map['finished_at']) : null,
       entryType: map['entry_type'] ?? 'manual',
+      description: map['description'],
     );
   }
 
@@ -57,6 +61,7 @@ class PriceHistory {
     DateTime? createdAt,
     DateTime? finishedAt,
     String? entryType,
+    String? description,
   }) {
     return PriceHistory(
       id: id ?? this.id,
@@ -67,6 +72,7 @@ class PriceHistory {
       createdAt: createdAt ?? this.createdAt,
       finishedAt: finishedAt ?? this.finishedAt,
       entryType: entryType ?? this.entryType,
+      description: description ?? this.description,
     );
   }
 }

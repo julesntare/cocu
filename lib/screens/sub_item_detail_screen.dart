@@ -71,6 +71,7 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
     final priceController = TextEditingController(
       text: NumberFormat('#,###').format(_currentSubItem!.currentPrice.round()),
     );
+    final descriptionController = TextEditingController();
     DateTime selectedDate = DateTime.now();
 
     final result = await showDialog<Map<String, dynamic>>(
@@ -136,6 +137,20 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
                 ],
               ),
               const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                decoration: InputDecoration(
+                  labelText: 'Description (Optional)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+                maxLines: 2,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 16),
               InkWell(
                 onTap: () async {
                   final DateTime? picked = await showDatePicker(
@@ -196,6 +211,7 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
                   Navigator.of(context).pop({
                     'price': double.parse(priceText),
                     'date': selectedDate,
+                    'description': descriptionController.text.trim(),
                   });
                 }
               },
@@ -217,6 +233,7 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
       try {
         final newPrice = result['price'] as double;
         final recordedAt = result['date'] as DateTime;
+        final description = result['description'] as String?;
 
         await _databaseService.insertPriceHistory(PriceHistory(
           itemId: widget.subItem.itemId,
@@ -225,6 +242,7 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
           recordedAt: recordedAt,
           createdAt: DateTime.now(),
           entryType: 'manual',
+          description: description?.isEmpty == true ? null : description,
         ));
 
         if (newPrice != _currentSubItem!.currentPrice) {
@@ -254,6 +272,9 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
   Future<void> _editPriceEntry(PriceHistory priceHistory) async {
     final priceController = TextEditingController(
       text: NumberFormat('#,###').format(priceHistory.price.round()),
+    );
+    final descriptionController = TextEditingController(
+      text: priceHistory.description ?? '',
     );
     DateTime selectedDate = priceHistory.recordedAt;
 
@@ -296,6 +317,20 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
                     );
                   }),
                 ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: descriptionController,
+                decoration: InputDecoration(
+                  labelText: 'Description (Optional)',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+                maxLines: 2,
+                textCapitalization: TextCapitalization.sentences,
               ),
               const SizedBox(height: 16),
               InkWell(
@@ -347,6 +382,7 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
                   Navigator.of(context).pop({
                     'price': double.parse(priceText),
                     'date': selectedDate,
+                    'description': descriptionController.text.trim(),
                   });
                 }
               },
@@ -365,10 +401,12 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
       try {
         final newPrice = result['price'] as double;
         final recordedAt = result['date'] as DateTime;
+        final description = result['description'] as String?;
 
         await _databaseService.updatePriceHistory(priceHistory.copyWith(
           price: newPrice,
           recordedAt: recordedAt,
+          description: description?.isEmpty == true ? null : description,
         ));
 
         final isLatestEntry = priceHistory.id == _priceHistory.last.id;
@@ -1033,6 +1071,57 @@ class _SubItemDetailScreenState extends State<SubItemDetailScreen> {
                               color: Colors.red,
                             ),
                           ),
+                        if (priceHistory.description != null &&
+                            priceHistory.description!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          InkWell(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  title: Row(
+                                    children: [
+                                      const Icon(
+                                        Icons.description,
+                                        color: Color(0xFFFF8C00),
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'Description',
+                                        style: TextStyle(fontSize: 18),
+                                      ),
+                                    ],
+                                  ),
+                                  content: SingleChildScrollView(
+                                    child: Text(
+                                      priceHistory.description!,
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Close'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                            child: Text(
+                              priceHistory.description!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[700],
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     trailing: PopupMenuButton<String>(
