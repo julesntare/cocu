@@ -8,6 +8,9 @@ class PriceHistory {
   final DateTime? finishedAt;
   final String entryType; // 'manual' or 'automatic'
   final String? description; // Optional description for the price entry
+  final double? quantityPurchased; // Units bought (e.g., 100 kWh)
+  final double? quantityRemaining; // Units left when recording
+  final double? quantityConsumed; // Units used (alternative entry method)
 
   PriceHistory({
     this.id,
@@ -19,6 +22,9 @@ class PriceHistory {
     this.finishedAt,
     this.entryType = 'manual',
     this.description,
+    this.quantityPurchased,
+    this.quantityRemaining,
+    this.quantityConsumed,
   });
 
   Map<String, dynamic> toMap() {
@@ -33,6 +39,9 @@ class PriceHistory {
       'finished_at': finishedAt?.toIso8601String(),
       'entry_type': entryType,
       'description': description,
+      'quantity_purchased': quantityPurchased,
+      'quantity_remaining': quantityRemaining,
+      'quantity_consumed': quantityConsumed,
     };
   }
 
@@ -49,6 +58,15 @@ class PriceHistory {
           map['finished_at'] != null ? DateTime.parse(map['finished_at']) : null,
       entryType: map['entry_type'] ?? 'manual',
       description: map['description'],
+      quantityPurchased: map['quantity_purchased'] != null
+          ? (map['quantity_purchased'] as num).toDouble()
+          : null,
+      quantityRemaining: map['quantity_remaining'] != null
+          ? (map['quantity_remaining'] as num).toDouble()
+          : null,
+      quantityConsumed: map['quantity_consumed'] != null
+          ? (map['quantity_consumed'] as num).toDouble()
+          : null,
     );
   }
 
@@ -62,6 +80,11 @@ class PriceHistory {
     DateTime? finishedAt,
     String? entryType,
     String? description,
+    double? quantityPurchased,
+    double? quantityRemaining,
+    double? quantityConsumed,
+    bool clearQuantityRemaining = false,
+    bool clearQuantityConsumed = false,
   }) {
     return PriceHistory(
       id: id ?? this.id,
@@ -73,6 +96,9 @@ class PriceHistory {
       finishedAt: finishedAt ?? this.finishedAt,
       entryType: entryType ?? this.entryType,
       description: description ?? this.description,
+      quantityPurchased: quantityPurchased ?? this.quantityPurchased,
+      quantityRemaining: clearQuantityRemaining ? null : (quantityRemaining ?? this.quantityRemaining),
+      quantityConsumed: clearQuantityConsumed ? null : (quantityConsumed ?? this.quantityConsumed),
     );
   }
 }

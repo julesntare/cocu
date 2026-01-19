@@ -36,6 +36,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
   final Map<int, List<PriceHistory>> _subItemHistoryCache = {};
   final Map<int, Map<String, Map<String, dynamic>>> _subItemMonthlySpendingCache = {};
 
+  // Preserve cycle index for the purchase period stats card
+  int _purchaseCycleIndex = 0;
+
   @override
   void initState() {
     super.initState();
@@ -207,12 +210,19 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         ? _currentItem!.currentPrice
         : _subItems[_selectedTabIndex].currentPrice;
 
+    // Check if usage tracking is enabled for this item
+    final bool trackUsage = _currentItem!.trackUsage;
+    final String? usageUnit = _currentItem!.usageUnit;
+
     // Initialize with current price as default value
     final priceController = TextEditingController(
       text: NumberFormat('#,###').format(currentPrice.round()),
     );
     final descriptionController = TextEditingController();
+    final quantityPurchasedController = TextEditingController();
+    final quantityValueController = TextEditingController();
     DateTime selectedDate = DateTime.now();
+    bool recordRemaining = true; // true = remaining, false = consumed
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -231,139 +241,299 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                   ),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
-                  Icons.add_shopping_cart,
+                child: Icon(
+                  trackUsage ? Icons.trending_up : Icons.add_shopping_cart,
                   color: Colors.white,
                   size: 24,
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Add Price Entry',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  trackUsage ? 'Add Usage Entry' : 'Add Price Entry',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: priceController,
-                decoration: InputDecoration(
-                  labelText: 'Price',
-                  suffixText: 'Rwf',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: priceController,
+                  decoration: InputDecoration(
+                    labelText: 'Price',
+                    suffixText: 'Rwf',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                    ),
+                    prefixIcon:
+                        const Icon(Icons.payments, color: Color(0xFFFFC107)),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        priceController.clear();
+                      },
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: Color(0xFFFF8C00), width: 2),
-                  ),
-                  prefixIcon:
-                      const Icon(Icons.payments, color: Color(0xFFFFC107)),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      priceController.clear();
-                    },
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    TextInputFormatter.withFunction((oldValue, newValue) {
+                      if (newValue.text.isEmpty) return newValue;
+                      final int value = int.parse(newValue.text);
+                      final formatted = NumberFormat('#,###').format(value);
+                      return TextEditingValue(
+                        text: formatted,
+                        selection:
+                            TextSelection.collapsed(offset: formatted.length),
+                      );
+                    }),
+                  ],
                 ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  TextInputFormatter.withFunction((oldValue, newValue) {
-                    if (newValue.text.isEmpty) return newValue;
-                    final int value = int.parse(newValue.text);
-                    final formatted = NumberFormat('#,###').format(value);
-                    return TextEditingValue(
-                      text: formatted,
-                      selection:
-                          TextSelection.collapsed(offset: formatted.length),
-                    );
-                  }),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: descriptionController,
-                decoration: InputDecoration(
-                  labelText: 'Description (Optional)',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: Color(0xFFFF8C00), width: 2),
-                  ),
-                  prefixIcon:
-                      const Icon(Icons.description, color: Color(0xFFFFB700)),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                ),
-                maxLines: 2,
-                textCapitalization: TextCapitalization.sentences,
-              ),
-              const SizedBox(height: 16),
-              InkWell(
-                onTap: () async {
-                  final date = await showDatePicker(
-                    context: context,
-                    initialDate: selectedDate,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
-                  );
-                  if (date != null) {
-                    setState(() {
-                      selectedDate = date;
-                    });
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(12),
-                    color: Colors.grey.shade50,
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today,
-                          color: Color(0xFFFF9500), size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Date',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            Text(
-                              DateFormat('MMM dd, yyyy').format(selectedDate),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
+                // Usage tracking fields (only shown when trackUsage is enabled)
+                if (trackUsage) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: quantityPurchasedController,
+                    decoration: InputDecoration(
+                      labelText: 'Quantity Purchased (Optional)',
+                      suffixText: usageUnit ?? 'units',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                      ),
+                      prefixIcon:
+                          const Icon(Icons.add_box, color: Color(0xFF4CAF50)),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      hintText: 'e.g., 100',
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  // Toggle between remaining and consumed
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                recordRemaining = true;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: recordRemaining
+                                    ? Colors.white
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: recordRemaining
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.1),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        )
+                                      ]
+                                    : null,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Remaining',
+                                  style: TextStyle(
+                                    color: recordRemaining
+                                        ? const Color(0xFFFF8C00)
+                                        : Colors.grey.shade600,
+                                    fontWeight: recordRemaining
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                recordRemaining = false;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: !recordRemaining
+                                    ? Colors.white
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: !recordRemaining
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.1),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        )
+                                      ]
+                                    : null,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Consumed',
+                                  style: TextStyle(
+                                    color: !recordRemaining
+                                        ? const Color(0xFFFF8C00)
+                                        : Colors.grey.shade600,
+                                    fontWeight: !recordRemaining
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: quantityValueController,
+                    decoration: InputDecoration(
+                      labelText: recordRemaining
+                          ? 'Remaining Quantity'
+                          : 'Consumed Quantity',
+                      suffixText: usageUnit ?? 'units',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                      ),
+                      prefixIcon: Icon(
+                        recordRemaining ? Icons.inventory : Icons.remove_circle,
+                        color: recordRemaining
+                            ? const Color(0xFF2196F3)
+                            : const Color(0xFFE91E63),
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      hintText: recordRemaining
+                          ? 'e.g., 45 (how much is left)'
+                          : 'e.g., 5 (how much used)',
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descriptionController,
+                  decoration: InputDecoration(
+                    labelText: 'Description (Optional)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                    ),
+                    prefixIcon:
+                        const Icon(Icons.description, color: Color(0xFFFFB700)),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  maxLines: 2,
+                  textCapitalization: TextCapitalization.sentences,
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (date != null) {
+                      setState(() {
+                        selectedDate = date;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.grey.shade50,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today,
+                            color: Color(0xFFFF9500), size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Date',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              Text(
+                                DateFormat('MMM dd, yyyy').format(selectedDate),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -387,6 +557,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       'price': priceController.text,
                       'date': selectedDate,
                       'description': descriptionController.text.trim(),
+                      'quantityPurchased': quantityPurchasedController.text.trim(),
+                      'quantityValue': quantityValueController.text.trim(),
+                      'recordRemaining': recordRemaining,
                     });
                   }
                 },
@@ -412,6 +585,31 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         final recordedAt = result['date'] as DateTime;
         final description = result['description'] as String?;
 
+        // Parse usage tracking fields
+        double? quantityPurchased;
+        double? quantityRemaining;
+        double? quantityConsumed;
+
+        if (trackUsage) {
+          final purchasedText = result['quantityPurchased'] as String?;
+          final valueText = result['quantityValue'] as String?;
+          final isRemaining = result['recordRemaining'] as bool;
+
+          if (purchasedText != null && purchasedText.isNotEmpty) {
+            quantityPurchased = double.tryParse(purchasedText);
+          }
+          if (valueText != null && valueText.isNotEmpty) {
+            final value = double.tryParse(valueText);
+            if (value != null) {
+              if (isRemaining) {
+                quantityRemaining = value;
+              } else {
+                quantityConsumed = value;
+              }
+            }
+          }
+        }
+
         if (_subItems.isEmpty) {
           // Main item (only when no sub-items)
           final priceHistory = PriceHistory(
@@ -421,6 +619,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
             createdAt: DateTime.now(),
             entryType: 'manual',
             description: description?.isEmpty == true ? null : description,
+            quantityPurchased: quantityPurchased,
+            quantityRemaining: quantityRemaining,
+            quantityConsumed: quantityConsumed,
           );
 
           await _databaseService.insertPriceHistory(priceHistory);
@@ -445,6 +646,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
             createdAt: DateTime.now(),
             entryType: 'manual',
             description: description?.isEmpty == true ? null : description,
+            quantityPurchased: quantityPurchased,
+            quantityRemaining: quantityRemaining,
+            quantityConsumed: quantityConsumed,
           );
 
           await _databaseService.insertPriceHistory(priceHistory);
@@ -469,13 +673,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Price entry added successfully')),
+            const SnackBar(content: Text('Entry added successfully')),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error adding price entry: $e')),
+            SnackBar(content: Text('Error adding entry: $e')),
           );
         }
       }
@@ -981,13 +1185,24 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
   }
 
   Future<void> _editPriceEntry(PriceHistory history) async {
+    // Check if usage tracking is enabled for this item
+    final bool trackUsage = _currentItem!.trackUsage;
+    final String? usageUnit = _currentItem!.usageUnit;
+
     final priceController = TextEditingController(
       text: NumberFormat('#,###').format(history.price.round()),
     );
     final descriptionController = TextEditingController(
       text: history.description ?? '',
     );
+    final quantityPurchasedController = TextEditingController(
+      text: history.quantityPurchased?.toString() ?? '',
+    );
+    final quantityValueController = TextEditingController(
+      text: (history.quantityRemaining ?? history.quantityConsumed)?.toString() ?? '',
+    );
     DateTime selectedDate = history.recordedAt;
+    bool recordRemaining = history.quantityRemaining != null || history.quantityConsumed == null;
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -1006,139 +1221,299 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                   ),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
-                  Icons.edit,
+                child: Icon(
+                  trackUsage ? Icons.trending_up : Icons.edit,
                   color: Colors.white,
                   size: 24,
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Edit Price Entry',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+              Expanded(
+                child: Text(
+                  trackUsage ? 'Edit Usage Entry' : 'Edit Price Entry',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
           ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: priceController,
-                decoration: InputDecoration(
-                  labelText: 'Price',
-                  suffixText: 'Rwf',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: priceController,
+                  decoration: InputDecoration(
+                    labelText: 'Price',
+                    suffixText: 'Rwf',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                    ),
+                    prefixIcon:
+                        const Icon(Icons.payments, color: Color(0xFFFFC107)),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        priceController.clear();
+                      },
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
                   ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: Color(0xFFFF8C00), width: 2),
-                  ),
-                  prefixIcon:
-                      const Icon(Icons.payments, color: Color(0xFFFFC107)),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      priceController.clear();
-                    },
-                  ),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    TextInputFormatter.withFunction((oldValue, newValue) {
+                      if (newValue.text.isEmpty) return newValue;
+                      final int value = int.parse(newValue.text);
+                      final formatted = NumberFormat('#,###').format(value);
+                      return TextEditingValue(
+                        text: formatted,
+                        selection:
+                            TextSelection.collapsed(offset: formatted.length),
+                      );
+                    }),
+                  ],
                 ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  TextInputFormatter.withFunction((oldValue, newValue) {
-                    if (newValue.text.isEmpty) return newValue;
-                    final int value = int.parse(newValue.text);
-                    final formatted = NumberFormat('#,###').format(value);
-                    return TextEditingValue(
-                      text: formatted,
-                      selection:
-                          TextSelection.collapsed(offset: formatted.length),
-                    );
-                  }),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: descriptionController,
-                decoration: InputDecoration(
-                  labelText: 'Description (Optional)',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide:
-                        const BorderSide(color: Color(0xFFFF8C00), width: 2),
-                  ),
-                  prefixIcon:
-                      const Icon(Icons.description, color: Color(0xFFFFB700)),
-                  filled: true,
-                  fillColor: Colors.grey.shade50,
-                ),
-                maxLines: 2,
-                textCapitalization: TextCapitalization.sentences,
-              ),
-              const SizedBox(height: 16),
-              InkWell(
-                onTap: () async {
-                  final date = await showDatePicker(
-                    context: context,
-                    initialDate: selectedDate,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
-                  );
-                  if (date != null) {
-                    setState(() {
-                      selectedDate = date;
-                    });
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(12),
-                    color: Colors.grey.shade50,
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today,
-                          color: Color(0xFFFF9500), size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Date',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            Text(
-                              DateFormat('MMM dd, yyyy').format(selectedDate),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
+                // Usage tracking fields (only shown when trackUsage is enabled)
+                if (trackUsage) ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: quantityPurchasedController,
+                    decoration: InputDecoration(
+                      labelText: 'Quantity Purchased (Optional)',
+                      suffixText: usageUnit ?? 'units',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                      ),
+                      prefixIcon:
+                          const Icon(Icons.add_box, color: Color(0xFF4CAF50)),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      hintText: 'e.g., 100',
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  // Toggle between remaining and consumed
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                recordRemaining = true;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: recordRemaining
+                                    ? Colors.white
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: recordRemaining
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.1),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        )
+                                      ]
+                                    : null,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Remaining',
+                                  style: TextStyle(
+                                    color: recordRemaining
+                                        ? const Color(0xFFFF8C00)
+                                        : Colors.grey.shade600,
+                                    fontWeight: recordRemaining
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                recordRemaining = false;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              decoration: BoxDecoration(
+                                color: !recordRemaining
+                                    ? Colors.white
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: !recordRemaining
+                                    ? [
+                                        BoxShadow(
+                                          color: Colors.black.withValues(alpha: 0.1),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        )
+                                      ]
+                                    : null,
+                              ),
+                              child: Center(
+                                child: Text(
+                                  'Consumed',
+                                  style: TextStyle(
+                                    color: !recordRemaining
+                                        ? const Color(0xFFFF8C00)
+                                        : Colors.grey.shade600,
+                                    fontWeight: !recordRemaining
+                                        ? FontWeight.bold
+                                        : FontWeight.normal,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: quantityValueController,
+                    decoration: InputDecoration(
+                      labelText: recordRemaining
+                          ? 'Remaining Quantity'
+                          : 'Consumed Quantity',
+                      suffixText: usageUnit ?? 'units',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                      ),
+                      prefixIcon: Icon(
+                        recordRemaining ? Icons.inventory : Icons.remove_circle,
+                        color: recordRemaining
+                            ? const Color(0xFF2196F3)
+                            : const Color(0xFFE91E63),
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                      hintText: recordRemaining
+                          ? 'e.g., 45 (how much is left)'
+                          : 'e.g., 5 (how much used)',
+                    ),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descriptionController,
+                  decoration: InputDecoration(
+                    labelText: 'Description (Optional)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                    ),
+                    prefixIcon:
+                        const Icon(Icons.description, color: Color(0xFFFFB700)),
+                    filled: true,
+                    fillColor: Colors.grey.shade50,
+                  ),
+                  maxLines: 2,
+                  textCapitalization: TextCapitalization.sentences,
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (date != null) {
+                      setState(() {
+                        selectedDate = date;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.grey.shade50,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today,
+                            color: Color(0xFFFF9500), size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Date',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              Text(
+                                DateFormat('MMM dd, yyyy').format(selectedDate),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -1162,6 +1537,9 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       'price': priceController.text,
                       'date': selectedDate,
                       'description': descriptionController.text.trim(),
+                      'quantityPurchased': quantityPurchasedController.text.trim(),
+                      'quantityValue': quantityValueController.text.trim(),
+                      'recordRemaining': recordRemaining,
                     });
                   }
                 },
@@ -1188,10 +1566,48 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         final recordedAt = result['date'] as DateTime;
         final description = result['description'] as String?;
 
+        // Parse usage tracking fields
+        double? quantityPurchased;
+        double? quantityRemaining;
+        double? quantityConsumed;
+        bool clearRemaining = false;
+        bool clearConsumed = false;
+
+        if (_currentItem!.trackUsage) {
+          final purchasedText = result['quantityPurchased'] as String?;
+          final valueText = result['quantityValue'] as String?;
+          final isRemaining = result['recordRemaining'] as bool;
+
+          if (purchasedText != null && purchasedText.isNotEmpty) {
+            quantityPurchased = double.tryParse(purchasedText);
+          }
+          if (valueText != null && valueText.isNotEmpty) {
+            final value = double.tryParse(valueText);
+            if (value != null) {
+              if (isRemaining) {
+                quantityRemaining = value;
+                clearConsumed = true; // Clear consumed if switching to remaining
+              } else {
+                quantityConsumed = value;
+                clearRemaining = true; // Clear remaining if switching to consumed
+              }
+            }
+          } else {
+            // Clear both if no value entered
+            clearRemaining = true;
+            clearConsumed = true;
+          }
+        }
+
         final updatedPriceHistory = history.copyWith(
           price: price,
           recordedAt: recordedAt,
           description: description?.isEmpty == true ? null : description,
+          quantityPurchased: quantityPurchased ?? history.quantityPurchased,
+          quantityRemaining: quantityRemaining,
+          quantityConsumed: quantityConsumed,
+          clearQuantityRemaining: clearRemaining,
+          clearQuantityConsumed: clearConsumed,
         );
 
         await _databaseService.updatePriceHistory(updatedPriceHistory);
@@ -1875,6 +2291,55 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
     }
   }
 
+  Widget _buildStatItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: color.withValues(alpha: 0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_currentItem == null || (_subItems.isNotEmpty && _tabController == null)) {
@@ -2138,6 +2603,67 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                   ),
                 ),
                 const SizedBox(height: 16),
+
+                // Purchase Period Stats Card (only shown when usage tracking is enabled)
+                if (_currentItem!.trackUsage)
+                  FutureBuilder<List<Map<String, dynamic>>>(
+                    future: _databaseService.getPurchaseCycleStats(_currentItem!.id!),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) {
+                        return const SizedBox.shrink();
+                      }
+
+                      final cycles = snapshot.data!;
+                      final usageUnit = _currentItem!.usageUnit ?? 'units';
+
+                      // Don't show if no cycles
+                      if (cycles.isEmpty) {
+                        return Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.trending_up,
+                                  size: 48,
+                                  color: Colors.grey.shade400,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'No usage data yet',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  'Add a price entry with quantity purchased to start tracking usage',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      }
+
+                      return _PurchasePeriodStatsCard(
+                        cycles: cycles,
+                        usageUnit: usageUnit,
+                        buildStatItem: _buildStatItem,
+                        initialCycleIndex: _purchaseCycleIndex,
+                        onCycleIndexChanged: (index) {
+                          _purchaseCycleIndex = index;
+                        },
+                      );
+                    },
+                  ),
+                if (_currentItem!.trackUsage) const SizedBox(height: 16),
 
                 // Purchase Consistency Analysis
                 if (_priceHistory
@@ -2512,5 +3038,309 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                 ),
               ],
             );
+  }
+}
+
+// Stateful widget for Purchase Period Stats with navigation
+class _PurchasePeriodStatsCard extends StatefulWidget {
+  final List<Map<String, dynamic>> cycles;
+  final String usageUnit;
+  final Widget Function({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) buildStatItem;
+  final int initialCycleIndex;
+  final ValueChanged<int> onCycleIndexChanged;
+
+  const _PurchasePeriodStatsCard({
+    required this.cycles,
+    required this.usageUnit,
+    required this.buildStatItem,
+    required this.initialCycleIndex,
+    required this.onCycleIndexChanged,
+  });
+
+  @override
+  State<_PurchasePeriodStatsCard> createState() => _PurchasePeriodStatsCardState();
+}
+
+class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
+  late int _currentCycleIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ensure index is within bounds
+    _currentCycleIndex = widget.initialCycleIndex.clamp(0, widget.cycles.length - 1);
+  }
+
+  void _goToPreviousCycle() {
+    if (_currentCycleIndex < widget.cycles.length - 1) {
+      setState(() {
+        _currentCycleIndex++;
+        widget.onCycleIndexChanged(_currentCycleIndex);
+      });
+    }
+  }
+
+  void _goToNextCycle() {
+    if (_currentCycleIndex > 0) {
+      setState(() {
+        _currentCycleIndex--;
+        widget.onCycleIndexChanged(_currentCycleIndex);
+      });
+    }
+  }
+
+  String _formatDateRange(DateTime purchaseDate, DateTime? endDate, bool isCurrentOngoing) {
+    final startStr = DateFormat('MMM dd, yyyy').format(purchaseDate);
+    if (endDate != null) {
+      // Completed: show purchase date - end date
+      return '$startStr - ${DateFormat('MMM dd, yyyy').format(endDate)}';
+    } else if (isCurrentOngoing) {
+      // Current ongoing purchase: show "Ongoing"
+      return '$startStr - Ongoing';
+    } else {
+      // Past entry without end date (shouldn't happen now with inferred dates)
+      return '$startStr - Present';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final purchase = widget.cycles[_currentCycleIndex];
+    final purchaseDate = purchase['purchaseDate'] as DateTime;
+    final endDate = purchase['endDate'] as DateTime?;
+    final quantityPurchased = purchase['quantityPurchased'] as double?;
+    final quantityRemaining = purchase['quantityRemaining'] as double?;
+    final consumed = purchase['consumed'] as double?;
+    final daysTracked = purchase['daysTracked'] as int;
+    final avgDailyUsage = purchase['avgDailyUsage'] as double?;
+    final isComplete = purchase['isComplete'] as bool;
+    final price = purchase['price'] as double?;
+    final usedFallback = purchase['usedFallback'] as bool? ?? false;
+    final usedHistoricalPattern = purchase['usedHistoricalPattern'] as bool? ?? false;
+
+    // Calculate display values - avoid N/A when we can infer values
+    final fallbackDailyUsage = (isComplete && quantityPurchased != null && daysTracked > 0)
+        ? quantityPurchased / daysTracked
+        : null;
+    final displayDailyUsage = avgDailyUsage ?? fallbackDailyUsage;
+    final displayConsumed = consumed ?? (isComplete && quantityPurchased != null ? quantityPurchased : null);
+    final displayRemaining = quantityRemaining ?? (isComplete && quantityPurchased != null ? 0.0 : null);
+
+    final bool canGoLeft = _currentCycleIndex < widget.cycles.length - 1;
+    final bool canGoRight = _currentCycleIndex > 0;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header with navigation
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: isComplete
+                          ? [const Color(0xFF4CAF50), const Color(0xFF66BB6A)]
+                          : [const Color(0xFFFF9800), const Color(0xFFFFB74D)],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isComplete ? Icons.check_circle : Icons.hourglass_top,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isComplete ? 'Completed Daily Usage' : 'Daily Usage',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        '${widget.cycles.length - _currentCycleIndex} of ${widget.cycles.length}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Navigation arrows
+                IconButton(
+                  onPressed: canGoLeft ? _goToPreviousCycle : null,
+                  icon: Icon(
+                    Icons.chevron_left,
+                    color: canGoLeft ? const Color(0xFFFF8C00) : Colors.grey.shade300,
+                  ),
+                  tooltip: 'Older purchase',
+                ),
+                IconButton(
+                  onPressed: canGoRight ? _goToNextCycle : null,
+                  icon: Icon(
+                    Icons.chevron_right,
+                    color: canGoRight ? const Color(0xFFFF8C00) : Colors.grey.shade300,
+                  ),
+                  tooltip: 'Newer purchase',
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+
+            // Date range
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _formatDateRange(purchaseDate, endDate, _currentCycleIndex == 0 && !isComplete),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isComplete ? const Color(0xFF4CAF50) : const Color(0xFFFF9800),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '$daysTracked days',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Price info
+            if (price != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Price: ${NumberFormat('#,###').format(price.round())} Rwf',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 16),
+
+            // Stats grid
+            Row(
+              children: [
+                Expanded(
+                  child: widget.buildStatItem(
+                    icon: Icons.speed,
+                    label: 'Daily Usage',
+                    value: displayDailyUsage != null && displayDailyUsage > 0
+                        ? '${displayDailyUsage.toStringAsFixed(1)} ${widget.usageUnit}'
+                        : 'N/A',
+                    color: const Color(0xFF2196F3),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: widget.buildStatItem(
+                    icon: Icons.shopping_cart,
+                    label: 'Purchased',
+                    value: quantityPurchased != null
+                        ? '${quantityPurchased.toStringAsFixed(0)} ${widget.usageUnit}'
+                        : 'N/A',
+                    color: const Color(0xFF4CAF50),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: widget.buildStatItem(
+                    icon: Icons.local_fire_department,
+                    label: 'Consumed',
+                    value: displayConsumed != null
+                        ? '${displayConsumed.toStringAsFixed(0)} ${widget.usageUnit}'
+                        : 'N/A',
+                    color: const Color(0xFFE91E63),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: widget.buildStatItem(
+                    icon: Icons.inventory_2,
+                    label: 'Remaining',
+                    value: displayRemaining != null
+                        ? '${displayRemaining.toStringAsFixed(0)} ${widget.usageUnit}'
+                        : 'N/A',
+                    color: const Color(0xFF9C27B0),
+                  ),
+                ),
+              ],
+            ),
+
+            // Show hint if using fallback or historical pattern
+            if (usedFallback || usedHistoricalPattern) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8F5E9),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFC8E6C9)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, size: 16, color: Color(0xFF4CAF50)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        usedHistoricalPattern
+                            ? 'Estimated from past purchase patterns'
+                            : 'Using average from other purchases',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.green.shade800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }

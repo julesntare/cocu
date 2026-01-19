@@ -5,6 +5,8 @@ class Item {
   final String? description;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool trackUsage;
+  final String? usageUnit;
 
   Item({
     this.id,
@@ -13,6 +15,8 @@ class Item {
     this.description,
     required this.createdAt,
     required this.updatedAt,
+    this.trackUsage = false,
+    this.usageUnit,
   });
 
   Map<String, dynamic> toMap() {
@@ -23,6 +27,8 @@ class Item {
       'description': description,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      'track_usage': trackUsage ? 1 : 0,
+      'usage_unit': usageUnit,
     };
   }
 
@@ -34,6 +40,8 @@ class Item {
       description: map['description'],
       createdAt: DateTime.parse(map['created_at']),
       updatedAt: DateTime.parse(map['updated_at']),
+      trackUsage: map['track_usage'] == 1,
+      usageUnit: map['usage_unit'],
     );
   }
 
@@ -44,6 +52,8 @@ class Item {
     String? description,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? trackUsage,
+    String? usageUnit,
   }) {
     return Item(
       id: id ?? this.id,
@@ -52,6 +62,8 @@ class Item {
       description: description ?? this.description,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      trackUsage: trackUsage ?? this.trackUsage,
+      usageUnit: usageUnit ?? this.usageUnit,
     );
   }
 }

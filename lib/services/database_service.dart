@@ -20,7 +20,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'cocu.db');
     return await openDatabase(
       path,
-      version: 7, // Increment version to add description to price_history
+      version: 8, // Increment version to add usage tracking fields
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -34,7 +34,9 @@ class DatabaseService {
         current_price REAL NOT NULL,
         description TEXT,
         created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
+        updated_at TEXT NOT NULL,
+        track_usage INTEGER DEFAULT 0,
+        usage_unit TEXT
       )
     ''');
 
@@ -61,6 +63,9 @@ class DatabaseService {
         finished_at TEXT,
         entry_type TEXT NOT NULL DEFAULT 'manual',
         description TEXT,
+        quantity_purchased REAL,
+        quantity_remaining REAL,
+        quantity_consumed REAL,
         FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE,
         FOREIGN KEY (sub_item_id) REFERENCES sub_items (id) ON DELETE CASCADE
       )
@@ -188,6 +193,23 @@ class DatabaseService {
             'ALTER TABLE price_history ADD COLUMN description TEXT');
       } catch (e) {
         print('Error upgrading database to version 7: $e');
+      }
+    }
+
+    if (oldVersion < 8) {
+      // Add usage tracking fields
+      try {
+        await db.execute(
+            'ALTER TABLE items ADD COLUMN track_usage INTEGER DEFAULT 0');
+        await db.execute('ALTER TABLE items ADD COLUMN usage_unit TEXT');
+        await db.execute(
+            'ALTER TABLE price_history ADD COLUMN quantity_purchased REAL');
+        await db.execute(
+            'ALTER TABLE price_history ADD COLUMN quantity_remaining REAL');
+        await db.execute(
+            'ALTER TABLE price_history ADD COLUMN quantity_consumed REAL');
+      } catch (e) {
+        print('Error upgrading database to version 8: $e');
       }
     }
   }
@@ -529,6 +551,272 @@ class DatabaseService {
       };
     }
     return monthlySpending;
+  }
+
+  // Usage tracking methods
+
+  // Get usage entries for an item (entries with quantity data)
+  Future<List<PriceHistory>> getUsageHistory(int itemId) async {
+    final db = await database;
+    final maps = await db.query(
+      'price_history',
+      where:
+          'item_id = ? AND (quantity_purchased IS NOT NULL OR quantity_remaining IS NOT NULL OR quantity_consumed IS NOT NULL)',
+      whereArgs: [itemId],
+      orderBy: 'recorded_at ASC',
+    );
+    return maps.map((map) => PriceHistory.fromMap(map)).toList();
+  }
+
+  // Get the latest remaining quantity for an item
+  Future<double?> getLatestRemainingQuantity(int itemId) async {
+    final db = await database;
+    final maps = await db.query(
+      'price_history',
+      where: 'item_id = ? AND quantity_remaining IS NOT NULL',
+      whereArgs: [itemId],
+      orderBy: 'recorded_at DESC',
+      limit: 1,
+    );
+    if (maps.isNotEmpty) {
+      return (maps.first['quantity_remaining'] as num?)?.toDouble();
+    }
+    return null;
+  }
+
+  // Calculate overall average daily usage across all completed purchases
+  // Uses recordedAt (purchase date) and finishedAt (end date) from each entry
+  //
+  // Example: Milk carton with 12 pieces
+  // - Purchase entry: recordedAt = Jan 1, finishedAt = Jan 10, quantityPurchased = 12, quantityRemaining = 3
+  // - Consumed = 12 - 3 = 9 pieces over 9 days
+  // - Avg daily usage = 9/9 = 1 piece/day
+  Future<Map<String, dynamic>> calculateUsageStats(int itemId) async {
+    final purchases = await getPurchaseCycleStats(itemId);
+
+    if (purchases.isEmpty) {
+      return {
+        'avgDailyUsage': 0.0,
+        'totalConsumed': 0.0,
+        'totalPurchased': 0.0,
+        'daysTracked': 0,
+        'latestRemaining': null,
+        'estimatedDaysRemaining': null,
+        'completedPurchases': 0,
+      };
+    }
+
+    double totalConsumed = 0.0;
+    double totalPurchased = 0.0;
+    int totalDaysTracked = 0;
+    int completedPurchases = 0;
+    double? latestRemaining;
+
+    for (final purchase in purchases) {
+      totalPurchased += (purchase['quantityPurchased'] as double?) ?? 0.0;
+
+      // Only count completed purchases for average calculation
+      if (purchase['isComplete'] == true) {
+        final consumed = purchase['consumed'] as double?;
+        final days = purchase['daysTracked'] as int;
+
+        if (consumed != null && consumed > 0 && days > 0) {
+          totalConsumed += consumed;
+          totalDaysTracked += days;
+          completedPurchases++;
+        }
+      }
+
+      // Track latest remaining (first in list is most recent)
+      if (latestRemaining == null && purchase['quantityRemaining'] != null) {
+        latestRemaining = purchase['quantityRemaining'] as double;
+      }
+    }
+
+    // Calculate overall average daily usage
+    double avgDailyUsage = totalDaysTracked > 0 ? totalConsumed / totalDaysTracked : 0.0;
+
+    // Estimate days remaining based on overall average
+    int? estimatedDaysRemaining;
+    if (latestRemaining != null && avgDailyUsage > 0) {
+      estimatedDaysRemaining = (latestRemaining / avgDailyUsage).floor();
+    }
+
+    return {
+      'avgDailyUsage': avgDailyUsage,
+      'totalConsumed': totalConsumed,
+      'totalPurchased': totalPurchased,
+      'daysTracked': totalDaysTracked,
+      'latestRemaining': latestRemaining,
+      'estimatedDaysRemaining': estimatedDaysRemaining,
+      'completedPurchases': completedPurchases,
+    };
+  }
+
+  // Helper to calculate days between two dates (calendar days, not 24h periods)
+  int _daysBetween(DateTime start, DateTime end) {
+    final startDate = DateTime(start.year, start.month, start.day);
+    final endDate = DateTime(end.year, end.month, end.day);
+    final days = endDate.difference(startDate).inDays;
+    return days > 0 ? days : 1; // At least 1 day
+  }
+
+  // Get all purchase entries for an item with usage tracking enabled
+  // Each manual price entry is a purchase period
+  // Uses recordedAt (purchase date) and finishedAt (end date) from the entry
+  // Returns list sorted by date, most recent first (index 0)
+  Future<List<Map<String, dynamic>>> getPurchaseCycleStats(int itemId) async {
+    final db = await database;
+
+    // Get ALL manual entries for this item (not just ones with quantity)
+    final maps = await db.query(
+      'price_history',
+      where: 'item_id = ? AND entry_type = ?',
+      whereArgs: [itemId, 'manual'],
+      orderBy: 'recorded_at DESC', // Most recent first
+    );
+
+    if (maps.isEmpty) {
+      return [];
+    }
+
+    List<Map<String, dynamic>> purchases = [];
+
+    // First pass: find the default quantityPurchased from entries that have it
+    double? defaultQuantityPurchased;
+    for (final map in maps) {
+      final entry = PriceHistory.fromMap(map);
+      if (entry.quantityPurchased != null) {
+        defaultQuantityPurchased = entry.quantityPurchased;
+        break; // Use the most recent one (list is sorted DESC)
+      }
+    }
+
+    // Second pass: calculate historical average from completed purchases
+    // We need this first to apply pattern to ongoing purchases
+    double historicalTotalConsumed = 0.0;
+    int historicalTotalDays = 0;
+
+    for (int i = 0; i < maps.length; i++) {
+      final entry = PriceHistory.fromMap(maps[i]);
+      final purchaseDate = entry.recordedAt;
+      DateTime? endDate = entry.finishedAt;
+
+      // Infer end date from newer purchase if not set
+      if (endDate == null && i > 0) {
+        final newerEntry = PriceHistory.fromMap(maps[i - 1]);
+        endDate = newerEntry.recordedAt;
+      }
+
+      // Only count completed purchases for historical average
+      if (endDate != null) {
+        final days = _daysBetween(purchaseDate, endDate);
+        double? qtyPurchased = entry.quantityPurchased ?? defaultQuantityPurchased;
+        final qtyRemaining = entry.quantityRemaining ?? 0.0;
+
+        if (qtyPurchased != null && days > 0) {
+          final consumed = qtyPurchased - qtyRemaining;
+          if (consumed > 0) {
+            historicalTotalConsumed += consumed;
+            historicalTotalDays += days;
+          }
+        }
+      }
+    }
+
+    final double? historicalAvgDailyUsage =
+        historicalTotalDays > 0 ? historicalTotalConsumed / historicalTotalDays : null;
+
+    // Third pass: build purchase list with historical pattern applied
+    for (int i = 0; i < maps.length; i++) {
+      final entry = PriceHistory.fromMap(maps[i]);
+
+      final purchaseDate = entry.recordedAt;
+      DateTime? endDate = entry.finishedAt;
+      final quantityRemaining = entry.quantityRemaining;
+      bool usedFallback = false;
+      bool usedHistoricalPattern = false;
+
+      // For entries without explicit end date, infer from the next (newer) purchase
+      // i-1 is the newer purchase since list is DESC sorted
+      DateTime? inferredEndDate;
+      if (endDate == null && i > 0) {
+        final newerEntry = PriceHistory.fromMap(maps[i - 1]);
+        inferredEndDate = newerEntry.recordedAt;
+      }
+
+      // Determine effective end date and completion status
+      final effectiveEndDate = endDate ?? inferredEndDate;
+      final bool isComplete = effectiveEndDate != null;
+
+      // Use entry's quantityPurchased if specified, otherwise use default
+      double? quantityPurchased = entry.quantityPurchased;
+      if (quantityPurchased == null && defaultQuantityPurchased != null) {
+        quantityPurchased = defaultQuantityPurchased;
+        usedFallback = true;
+      }
+
+      // Calculate consumed and daily usage
+      double? consumed;
+      double? avgDailyUsage;
+      double? estimatedRemaining;
+      int daysTracked;
+
+      if (isComplete) {
+        // Completed purchase: use effective end date
+        daysTracked = _daysBetween(purchaseDate, effectiveEndDate);
+
+        if (quantityPurchased != null) {
+          // For completed entries without remaining specified, assume remaining = 0
+          final effectiveRemaining = usedFallback ? 0.0 : (quantityRemaining ?? 0.0);
+          consumed = quantityPurchased - effectiveRemaining;
+          if (daysTracked > 0 && consumed > 0) {
+            avgDailyUsage = consumed / daysTracked;
+          }
+        }
+      } else {
+        // Ongoing purchase: calculate days from purchase to now
+        daysTracked = _daysBetween(purchaseDate, DateTime.now());
+
+        // For ongoing, try actual remaining first
+        if (quantityPurchased != null && quantityRemaining != null) {
+          consumed = quantityPurchased - quantityRemaining;
+          if (daysTracked > 0 && consumed > 0) {
+            avgDailyUsage = consumed / daysTracked;
+          }
+        }
+        // If no actual data but we have historical pattern, use it to estimate
+        else if (quantityPurchased != null && historicalAvgDailyUsage != null && daysTracked > 0) {
+          usedHistoricalPattern = true;
+          avgDailyUsage = historicalAvgDailyUsage;
+          consumed = historicalAvgDailyUsage * daysTracked;
+          // Cap consumed at quantity purchased
+          if (consumed > quantityPurchased) {
+            consumed = quantityPurchased;
+          }
+          estimatedRemaining = quantityPurchased - consumed;
+          if (estimatedRemaining < 0) estimatedRemaining = 0;
+        }
+      }
+
+      purchases.add({
+        'id': entry.id,
+        'purchaseDate': purchaseDate,
+        'endDate': effectiveEndDate,
+        'quantityPurchased': quantityPurchased,
+        'quantityRemaining': usedFallback && isComplete ? 0.0 : (quantityRemaining ?? estimatedRemaining),
+        'consumed': consumed,
+        'daysTracked': daysTracked,
+        'avgDailyUsage': avgDailyUsage,
+        'isComplete': isComplete,
+        'price': entry.price,
+        'description': entry.description,
+        'usedFallback': usedFallback,
+        'usedHistoricalPattern': usedHistoricalPattern,
+      });
+    }
+
+    return purchases;
   }
 
   // Clear all data (for backup restore)

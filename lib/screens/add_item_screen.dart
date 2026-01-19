@@ -18,10 +18,24 @@ class _AddItemScreenState extends State<AddItemScreen> {
   final _nameController = TextEditingController();
   final _priceController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _customUnitController = TextEditingController();
   final DatabaseService _databaseService = DatabaseService();
 
   bool _isLoading = false;
   DateTime? _selectedDate;
+  bool _trackUsage = false;
+  String? _selectedUnit;
+  bool _useCustomUnit = false;
+
+  static const List<String> _predefinedUnits = [
+    'kWh',
+    'kg',
+    'g',
+    'L',
+    'ml',
+    'pieces',
+    'units',
+  ];
 
   @override
   void initState() {
@@ -33,6 +47,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
           NumberFormat('#,###').format(widget.item!.currentPrice.round());
       _descriptionController.text = widget.item!.description ?? '';
       _selectedDate = widget.item!.createdAt;
+      _trackUsage = widget.item!.trackUsage;
+      if (widget.item!.usageUnit != null) {
+        if (_predefinedUnits.contains(widget.item!.usageUnit)) {
+          _selectedUnit = widget.item!.usageUnit;
+          _useCustomUnit = false;
+        } else {
+          _useCustomUnit = true;
+          _customUnitController.text = widget.item!.usageUnit!;
+        }
+      }
     }
   }
 
@@ -41,6 +65,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
     _nameController.dispose();
     _priceController.dispose();
     _descriptionController.dispose();
+    _customUnitController.dispose();
     super.dispose();
   }
 
@@ -59,6 +84,16 @@ class _AddItemScreenState extends State<AddItemScreen> {
       final priceText = _priceController.text.replaceAll(',', '').trim();
       final price = priceText.isEmpty ? 0.0 : double.parse(priceText);
 
+      // Determine usage unit
+      String? usageUnit;
+      if (_trackUsage) {
+        if (_useCustomUnit && _customUnitController.text.trim().isNotEmpty) {
+          usageUnit = _customUnitController.text.trim();
+        } else if (_selectedUnit != null) {
+          usageUnit = _selectedUnit;
+        }
+      }
+
       final item = Item(
         id: widget.item?.id,
         name: _nameController.text.trim(),
@@ -68,6 +103,8 @@ class _AddItemScreenState extends State<AddItemScreen> {
             : _descriptionController.text.trim(),
         createdAt: createdDate,
         updatedAt: now,
+        trackUsage: _trackUsage,
+        usageUnit: usageUnit,
       );
 
       if (widget.item == null) {
@@ -244,6 +281,149 @@ class _AddItemScreenState extends State<AddItemScreen> {
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
             ),
+            const SizedBox(height: 14),
+            // Usage tracking toggle
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.grey.shade50,
+              ),
+              child: SwitchListTile(
+                title: const Text('Track daily usage'),
+                subtitle: Text(
+                  'Monitor consumption (e.g., electricity, groceries)',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                value: _trackUsage,
+                onChanged: (value) {
+                  setState(() {
+                    _trackUsage = value;
+                    if (!value) {
+                      _selectedUnit = null;
+                      _useCustomUnit = false;
+                      _customUnitController.clear();
+                    }
+                  });
+                },
+                activeTrackColor: const Color(0xFFFFE0B2),
+                activeThumbColor: const Color(0xFFFF8C00),
+                secondary: Icon(
+                  Icons.trending_up,
+                  color: _trackUsage ? const Color(0xFFFF8C00) : Colors.grey,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            // Usage unit selector (shown when tracking is enabled)
+            if (_trackUsage) ...[
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.grey.shade50,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Usage Unit',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ..._predefinedUnits.map((unit) => ChoiceChip(
+                              label: Text(unit),
+                              selected: !_useCustomUnit && _selectedUnit == unit,
+                              onSelected: (selected) {
+                                setState(() {
+                                  if (selected) {
+                                    _selectedUnit = unit;
+                                    _useCustomUnit = false;
+                                    _customUnitController.clear();
+                                  }
+                                });
+                              },
+                              selectedColor: const Color(0xFFFFE0B2),
+                              labelStyle: TextStyle(
+                                color: !_useCustomUnit && _selectedUnit == unit
+                                    ? const Color(0xFFFF8C00)
+                                    : Colors.grey.shade700,
+                                fontWeight: !_useCustomUnit && _selectedUnit == unit
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                            )),
+                        ChoiceChip(
+                          label: const Text('Custom'),
+                          selected: _useCustomUnit,
+                          onSelected: (selected) {
+                            setState(() {
+                              _useCustomUnit = selected;
+                              if (selected) {
+                                _selectedUnit = null;
+                              }
+                            });
+                          },
+                          selectedColor: const Color(0xFFFFE0B2),
+                          labelStyle: TextStyle(
+                            color: _useCustomUnit
+                                ? const Color(0xFFFF8C00)
+                                : Colors.grey.shade700,
+                            fontWeight:
+                                _useCustomUnit ? FontWeight.bold : FontWeight.normal,
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_useCustomUnit) ...[
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _customUnitController,
+                        decoration: InputDecoration(
+                          labelText: 'Custom unit',
+                          hintText: 'e.g., sachets, bottles',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide:
+                                const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          filled: true,
+                          fillColor: Colors.white,
+                        ),
+                        validator: (value) {
+                          if (_trackUsage &&
+                              _useCustomUnit &&
+                              (value == null || value.trim().isEmpty)) {
+                            return 'Please enter a custom unit';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             InkWell(
               onTap: () async {
