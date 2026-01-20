@@ -3275,7 +3275,7 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                     icon: Icons.shopping_cart,
                     label: 'Purchased',
                     value: quantityPurchased != null
-                        ? '${quantityPurchased.toStringAsFixed(0)} ${widget.usageUnit}'
+                        ? '${quantityPurchased.toStringAsFixed(1)} ${widget.usageUnit}'
                         : 'N/A',
                     color: const Color(0xFF4CAF50),
                   ),
@@ -3290,7 +3290,7 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                     icon: Icons.local_fire_department,
                     label: 'Consumed',
                     value: displayConsumed != null
-                        ? '${displayConsumed.toStringAsFixed(0)} ${widget.usageUnit}'
+                        ? '${displayConsumed.toStringAsFixed(1)} ${widget.usageUnit}'
                         : 'N/A',
                     color: const Color(0xFFE91E63),
                   ),
@@ -3301,7 +3301,7 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                     icon: Icons.inventory_2,
                     label: 'Remaining',
                     value: displayRemaining != null
-                        ? '${displayRemaining.toStringAsFixed(0)} ${widget.usageUnit}'
+                        ? '${displayRemaining.toStringAsFixed(1)} ${widget.usageUnit}'
                         : 'N/A',
                     color: const Color(0xFF9C27B0),
                   ),
