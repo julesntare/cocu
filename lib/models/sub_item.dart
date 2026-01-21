@@ -5,6 +5,8 @@ class SubItem {
   final double currentPrice;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool trackUsage;
+  final String? usageUnit;
 
   SubItem({
     this.id,
@@ -13,6 +15,8 @@ class SubItem {
     required this.currentPrice,
     required this.createdAt,
     required this.updatedAt,
+    this.trackUsage = false,
+    this.usageUnit,
   });
 
   Map<String, dynamic> toMap() {
@@ -23,6 +27,8 @@ class SubItem {
       'current_price': currentPrice,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt.toIso8601String(),
+      'track_usage': trackUsage ? 1 : 0,
+      'usage_unit': usageUnit,
     };
   }
 
@@ -34,6 +40,8 @@ class SubItem {
       currentPrice: map['current_price'] as double,
       createdAt: DateTime.parse(map['created_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
+      trackUsage: map['track_usage'] == 1,
+      usageUnit: map['usage_unit'] as String?,
     );
   }
 
@@ -44,6 +52,8 @@ class SubItem {
     double? currentPrice,
     DateTime? createdAt,
     DateTime? updatedAt,
+    bool? trackUsage,
+    String? usageUnit,
   }) {
     return SubItem(
       id: id ?? this.id,
@@ -52,6 +62,8 @@ class SubItem {
       currentPrice: currentPrice ?? this.currentPrice,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      trackUsage: trackUsage ?? this.trackUsage,
+      usageUnit: usageUnit ?? this.usageUnit,
     );
   }
 }

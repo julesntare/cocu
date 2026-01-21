@@ -20,7 +20,7 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'cocu.db');
     return await openDatabase(
       path,
-      version: 8, // Increment version to add usage tracking fields
+      version: 9, // Add track_usage to sub_items
       onCreate: _createDatabase,
       onUpgrade: _upgradeDatabase,
     );
@@ -48,6 +48,8 @@ class DatabaseService {
         current_price REAL NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+        track_usage INTEGER DEFAULT 0,
+        usage_unit TEXT,
         FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE
       )
     ''');
@@ -210,6 +212,17 @@ class DatabaseService {
             'ALTER TABLE price_history ADD COLUMN quantity_consumed REAL');
       } catch (e) {
         print('Error upgrading database to version 8: $e');
+      }
+    }
+
+    if (oldVersion < 9) {
+      // Add track_usage to sub_items
+      try {
+        await db.execute(
+            'ALTER TABLE sub_items ADD COLUMN track_usage INTEGER DEFAULT 0');
+        await db.execute('ALTER TABLE sub_items ADD COLUMN usage_unit TEXT');
+      } catch (e) {
+        print('Error upgrading database to version 9: $e');
       }
     }
   }
@@ -665,14 +678,25 @@ class DatabaseService {
   // Each manual price entry is a purchase period
   // Uses recordedAt (purchase date) and finishedAt (end date) from the entry
   // Returns list sorted by date, most recent first (index 0)
-  Future<List<Map<String, dynamic>>> getPurchaseCycleStats(int itemId) async {
+  Future<List<Map<String, dynamic>>> getPurchaseCycleStats(int itemId, {int? subItemId}) async {
     final db = await database;
 
-    // Get ALL manual entries for this item (not just ones with quantity)
+    // Get ALL manual entries for this item/sub-item (not just ones with quantity)
+    String whereClause;
+    List<dynamic> whereArgs;
+
+    if (subItemId != null) {
+      whereClause = 'item_id = ? AND sub_item_id = ? AND entry_type = ?';
+      whereArgs = [itemId, subItemId, 'manual'];
+    } else {
+      whereClause = 'item_id = ? AND sub_item_id IS NULL AND entry_type = ?';
+      whereArgs = [itemId, 'manual'];
+    }
+
     final maps = await db.query(
       'price_history',
-      where: 'item_id = ? AND entry_type = ?',
-      whereArgs: [itemId, 'manual'],
+      where: whereClause,
+      whereArgs: whereArgs,
       orderBy: 'recorded_at DESC', // Most recent first
     );
 

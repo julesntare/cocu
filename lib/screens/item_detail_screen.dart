@@ -210,9 +210,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         ? _currentItem!.currentPrice
         : _subItems[_selectedTabIndex].currentPrice;
 
-    // Check if usage tracking is enabled for this item
-    final bool trackUsage = _currentItem!.trackUsage;
-    final String? usageUnit = _currentItem!.usageUnit;
+    // Check if usage tracking is enabled (use sub-item's setting if sub-items exist)
+    final bool trackUsage = _subItems.isEmpty
+        ? _currentItem!.trackUsage
+        : _subItems[_selectedTabIndex].trackUsage;
+    final String? usageUnit = _subItems.isEmpty
+        ? _currentItem!.usageUnit
+        : _subItems[_selectedTabIndex].usageUnit;
 
     // Initialize with current price as default value
     final priceController = TextEditingController(
@@ -1185,9 +1189,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
   }
 
   Future<void> _editPriceEntry(PriceHistory history) async {
-    // Check if usage tracking is enabled for this item
-    final bool trackUsage = _currentItem!.trackUsage;
-    final String? usageUnit = _currentItem!.usageUnit;
+    // Check if usage tracking is enabled (use sub-item's setting if sub-items exist)
+    final bool trackUsage = _subItems.isEmpty
+        ? _currentItem!.trackUsage
+        : _subItems[_selectedTabIndex].trackUsage;
+    final String? usageUnit = _subItems.isEmpty
+        ? _currentItem!.usageUnit
+        : _subItems[_selectedTabIndex].usageUnit;
 
     final priceController = TextEditingController(
       text: NumberFormat('#,###').format(history.price.round()),
@@ -1573,7 +1581,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         bool clearRemaining = false;
         bool clearConsumed = false;
 
-        if (_currentItem!.trackUsage) {
+        final bool currentTrackUsage = _subItems.isEmpty
+            ? _currentItem!.trackUsage
+            : _subItems[_selectedTabIndex].trackUsage;
+
+        if (currentTrackUsage) {
           final purchasedText = result['quantityPurchased'] as String?;
           final valueText = result['quantityValue'] as String?;
           final isRemaining = result['recordRemaining'] as bool;
@@ -1961,10 +1973,27 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
     }
   }
 
+  static const List<String> _predefinedUnits = [
+    'kWh',
+    'L',
+    'kg',
+    'g',
+    'units',
+    'pcs',
+    'ml',
+    'bottles',
+    'packs',
+    'rolls',
+  ];
+
   Future<void> _addSubItem() async {
     final nameController = TextEditingController();
     final priceController = TextEditingController();
+    final customUnitController = TextEditingController();
     DateTime selectedDate = DateTime.now();
+    bool trackUsage = false;
+    String? selectedUnit;
+    bool useCustomUnit = false;
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -1974,110 +2003,218 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
             borderRadius: BorderRadius.circular(20),
           ),
           title: const Text('Add Sub-Item'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: 'Sub-Item Name (e.g., 5kg, 10kg, 1L)',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Sub-Item Name (e.g., 5kg, 10kg, 1L)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
+                  textCapitalization: TextCapitalization.words,
                 ),
-                textCapitalization: TextCapitalization.words,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: priceController,
-                decoration: InputDecoration(
-                  labelText: 'Initial Price (Rwf)',
-                  prefixText: 'Rwf ',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: priceController,
+                  decoration: InputDecoration(
+                    labelText: 'Initial Price (Rwf)',
+                    prefixText: 'Rwf ',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    TextInputFormatter.withFunction((oldValue, newValue) {
+                      if (newValue.text.isEmpty) {
+                        return newValue;
+                      }
+                      final number = int.parse(newValue.text);
+                      final formatted = NumberFormat('#,###').format(number);
+                      return TextEditingValue(
+                        text: formatted,
+                        selection: TextSelection.collapsed(offset: formatted.length),
+                      );
+                    }),
+                  ],
                 ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  TextInputFormatter.withFunction((oldValue, newValue) {
-                    if (newValue.text.isEmpty) {
-                      return newValue;
-                    }
-                    final number = int.parse(newValue.text);
-                    final formatted = NumberFormat('#,###').format(number);
-                    return TextEditingValue(
-                      text: formatted,
-                      selection: TextSelection.collapsed(offset: formatted.length),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final date = await showDatePicker(
+                      context: context,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                      builder: (context, child) {
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: const ColorScheme.light(
+                              primary: Color(0xFFFF8C00),
+                              onPrimary: Colors.white,
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
                     );
-                  }),
-                ],
-              ),
-              const SizedBox(height: 16),
-              InkWell(
-                onTap: () async {
-                  final date = await showDatePicker(
-                    context: context,
-                    initialDate: selectedDate,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
-                    builder: (context, child) {
-                      return Theme(
-                        data: Theme.of(context).copyWith(
-                          colorScheme: const ColorScheme.light(
-                            primary: Color(0xFFFF8C00),
-                            onPrimary: Colors.white,
+                    if (date != null) {
+                      setState(() {
+                        selectedDate = date;
+                      });
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.grey.shade50,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today,
+                            color: Color(0xFFFF9500), size: 20),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Date',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              Text(
+                                DateFormat('MMM dd, yyyy').format(selectedDate),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        child: child!,
-                      );
-                    },
-                  );
-                  if (date != null) {
-                    setState(() {
-                      selectedDate = date;
-                    });
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(16),
+                        const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                // Track usage toggle
+                Container(
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.grey.shade300),
                     borderRadius: BorderRadius.circular(12),
-                    color: Colors.grey.shade50,
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today,
-                          color: Color(0xFFFF9500), size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  child: SwitchListTile(
+                    title: const Text('Track daily usage'),
+                    subtitle: Text(
+                      'Monitor consumption for this sub-item',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                    value: trackUsage,
+                    onChanged: (value) {
+                      setState(() {
+                        trackUsage = value;
+                        if (!value) {
+                          selectedUnit = null;
+                          useCustomUnit = false;
+                          customUnitController.clear();
+                        }
+                      });
+                    },
+                    activeTrackColor: const Color(0xFFFFE0B2),
+                    activeThumbColor: const Color(0xFFFF8C00),
+                    secondary: Icon(
+                      Icons.trending_up,
+                      color: trackUsage ? const Color(0xFFFF8C00) : Colors.grey,
+                    ),
+                  ),
+                ),
+                // Usage unit selector (shown when tracking is enabled)
+                if (trackUsage) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.grey.shade50,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Usage Unit',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
-                            Text(
-                              'Date',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                            Text(
-                              DateFormat('MMM dd, yyyy').format(selectedDate),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
+                            ..._predefinedUnits.map((unit) => ChoiceChip(
+                              label: Text(unit),
+                              selected: !useCustomUnit && selectedUnit == unit,
+                              onSelected: (selected) {
+                                setState(() {
+                                  if (selected) {
+                                    selectedUnit = unit;
+                                    useCustomUnit = false;
+                                    customUnitController.clear();
+                                  }
+                                });
+                              },
+                              selectedColor: const Color(0xFFFFE0B2),
+                            )),
+                            ChoiceChip(
+                              label: const Text('Custom'),
+                              selected: useCustomUnit,
+                              onSelected: (selected) {
+                                setState(() {
+                                  useCustomUnit = selected;
+                                  if (selected) {
+                                    selectedUnit = null;
+                                  }
+                                });
+                              },
+                              selectedColor: const Color(0xFFFFE0B2),
                             ),
                           ],
                         ),
-                      ),
-                      const Icon(Icons.arrow_drop_down, color: Colors.grey),
-                    ],
+                        if (useCustomUnit) ...[
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: customUnitController,
+                            decoration: InputDecoration(
+                              labelText: 'Custom Unit',
+                              hintText: 'e.g., tablets, servings',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -2089,10 +2226,20 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                 final name = nameController.text.trim();
                 final priceText = priceController.text.replaceAll(',', '').trim();
                 if (name.isNotEmpty && priceText.isNotEmpty) {
+                  String? usageUnit;
+                  if (trackUsage) {
+                    if (useCustomUnit && customUnitController.text.trim().isNotEmpty) {
+                      usageUnit = customUnitController.text.trim();
+                    } else if (selectedUnit != null) {
+                      usageUnit = selectedUnit;
+                    }
+                  }
                   Navigator.of(context).pop({
                     'name': name,
                     'price': double.parse(priceText),
                     'date': selectedDate,
+                    'trackUsage': trackUsage,
+                    'usageUnit': usageUnit,
                   });
                 }
               },
@@ -2116,6 +2263,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
           currentPrice: result['price'] as double,
           createdAt: selectedDate,
           updatedAt: selectedDate,
+          trackUsage: result['trackUsage'] as bool,
+          usageUnit: result['usageUnit'] as String?,
         );
 
         await _databaseService.insertSubItem(subItem);
@@ -2130,6 +2279,217 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Error adding sub-item: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _editSubItem(SubItem subItem) async {
+    final nameController = TextEditingController(text: subItem.name);
+    final customUnitController = TextEditingController();
+    bool trackUsage = subItem.trackUsage;
+    String? selectedUnit;
+    bool useCustomUnit = false;
+
+    // Initialize unit selection based on existing value
+    if (subItem.usageUnit != null) {
+      if (_predefinedUnits.contains(subItem.usageUnit)) {
+        selectedUnit = subItem.usageUnit;
+        useCustomUnit = false;
+      } else {
+        useCustomUnit = true;
+        customUnitController.text = subItem.usageUnit!;
+      }
+    }
+
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text('Edit Sub-Item'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Sub-Item Name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  textCapitalization: TextCapitalization.words,
+                ),
+                const SizedBox(height: 16),
+                // Track usage toggle
+                Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SwitchListTile(
+                    title: const Text('Track daily usage'),
+                    subtitle: Text(
+                      'Monitor consumption for this sub-item',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
+                    value: trackUsage,
+                    onChanged: (value) {
+                      setState(() {
+                        trackUsage = value;
+                        if (!value) {
+                          selectedUnit = null;
+                          useCustomUnit = false;
+                          customUnitController.clear();
+                        }
+                      });
+                    },
+                    activeTrackColor: const Color(0xFFFFE0B2),
+                    activeThumbColor: const Color(0xFFFF8C00),
+                    secondary: Icon(
+                      Icons.trending_up,
+                      color: trackUsage ? const Color(0xFFFF8C00) : Colors.grey,
+                    ),
+                  ),
+                ),
+                // Usage unit selector (shown when tracking is enabled)
+                if (trackUsage) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.grey.shade50,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Usage Unit',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            ..._predefinedUnits.map((unit) => ChoiceChip(
+                              label: Text(unit),
+                              selected: !useCustomUnit && selectedUnit == unit,
+                              onSelected: (selected) {
+                                setState(() {
+                                  if (selected) {
+                                    selectedUnit = unit;
+                                    useCustomUnit = false;
+                                    customUnitController.clear();
+                                  }
+                                });
+                              },
+                              selectedColor: const Color(0xFFFFE0B2),
+                            )),
+                            ChoiceChip(
+                              label: const Text('Custom'),
+                              selected: useCustomUnit,
+                              onSelected: (selected) {
+                                setState(() {
+                                  useCustomUnit = selected;
+                                  if (selected) {
+                                    selectedUnit = null;
+                                  }
+                                });
+                              },
+                              selectedColor: const Color(0xFFFFE0B2),
+                            ),
+                          ],
+                        ),
+                        if (useCustomUnit) ...[
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: customUnitController,
+                            decoration: InputDecoration(
+                              labelText: 'Custom Unit',
+                              hintText: 'e.g., tablets, servings',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              filled: true,
+                              fillColor: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = nameController.text.trim();
+                if (name.isNotEmpty) {
+                  String? usageUnit;
+                  if (trackUsage) {
+                    if (useCustomUnit && customUnitController.text.trim().isNotEmpty) {
+                      usageUnit = customUnitController.text.trim();
+                    } else if (selectedUnit != null) {
+                      usageUnit = selectedUnit;
+                    }
+                  }
+                  Navigator.of(context).pop({
+                    'name': name,
+                    'trackUsage': trackUsage,
+                    'usageUnit': usageUnit,
+                  });
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFFF8C00),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null) {
+      try {
+        final updatedSubItem = subItem.copyWith(
+          name: result['name'] as String,
+          trackUsage: result['trackUsage'] as bool,
+          usageUnit: result['usageUnit'] as String?,
+          updatedAt: DateTime.now(),
+        );
+
+        await _databaseService.updateSubItem(updatedSubItem);
+        await _loadPriceHistory();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Sub-item updated successfully')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating sub-item: $e')),
           );
         }
       }
@@ -2360,7 +2720,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
             backgroundColor: Colors.transparent,
             elevation: 0,
             actions: [
-              if (_subItems.isNotEmpty) // Show delete button for sub-items when they exist
+              if (_subItems.isNotEmpty) ...[
+                // Show edit button for sub-items when they exist
+                IconButton(
+                  icon: const Icon(Icons.edit),
+                  tooltip: 'Edit Sub-Item',
+                  onPressed: () {
+                    _editSubItem(_subItems[_selectedTabIndex]);
+                  },
+                ),
+                // Show delete button for sub-items when they exist
                 IconButton(
                   icon: const Icon(Icons.delete_outline),
                   tooltip: 'Delete Sub-Item',
@@ -2368,6 +2737,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                     _deleteSubItem(_subItems[_selectedTabIndex]);
                   },
                 ),
+              ],
               if (_subItems.isEmpty) // Show edit button only when no sub-items (main item only)
                 IconButton(
                   icon: const Icon(Icons.edit),
@@ -2437,6 +2807,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
     final String? description = _subItems.isEmpty
         ? _currentItem!.description
         : null;
+    final bool trackUsage = _subItems.isEmpty
+        ? _currentItem!.trackUsage
+        : _subItems[_selectedTabIndex].trackUsage;
+    final String usageUnit = _subItems.isEmpty
+        ? (_currentItem!.usageUnit ?? 'units')
+        : (_subItems[_selectedTabIndex].usageUnit ?? 'units');
 
     return ListView(
               padding: const EdgeInsets.all(16),
@@ -2605,16 +2981,20 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                 const SizedBox(height: 16),
 
                 // Purchase Period Stats Card (only shown when usage tracking is enabled)
-                if (_currentItem!.trackUsage)
+                if (trackUsage)
                   FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _databaseService.getPurchaseCycleStats(_currentItem!.id!),
+                    future: _subItems.isEmpty
+                        ? _databaseService.getPurchaseCycleStats(_currentItem!.id!)
+                        : _databaseService.getPurchaseCycleStats(
+                            _currentItem!.id!,
+                            subItemId: _subItems[_selectedTabIndex].id,
+                          ),
                     builder: (context, snapshot) {
                       if (!snapshot.hasData) {
                         return const SizedBox.shrink();
                       }
 
                       final cycles = snapshot.data!;
-                      final usageUnit = _currentItem!.usageUnit ?? 'units';
 
                       // Don't show if no cycles
                       if (cycles.isEmpty) {
@@ -2663,7 +3043,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       );
                     },
                   ),
-                if (_currentItem!.trackUsage) const SizedBox(height: 16),
+                if (trackUsage) const SizedBox(height: 16),
 
                 // Purchase Consistency Analysis
                 if (_priceHistory
