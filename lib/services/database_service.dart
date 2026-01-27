@@ -325,6 +325,47 @@ class DatabaseService {
     );
   }
 
+  // Get the most recent ongoing purchase (no finishedAt) for an item or sub-item
+  Future<PriceHistory?> getMostRecentOngoingPurchase(int itemId, {int? subItemId}) async {
+    final db = await database;
+    String whereClause = 'item_id = ? AND finished_at IS NULL AND entry_type = ?';
+    List<dynamic> whereArgs = [itemId, 'manual'];
+
+    if (subItemId != null) {
+      whereClause += ' AND sub_item_id = ?';
+      whereArgs.add(subItemId);
+    } else {
+      whereClause += ' AND sub_item_id IS NULL';
+    }
+
+    final maps = await db.query(
+      'price_history',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'recorded_at DESC',
+      limit: 1,
+    );
+
+    if (maps.isNotEmpty) {
+      return PriceHistory.fromMap(maps.first);
+    }
+    return null;
+  }
+
+  // Finish an ongoing purchase by setting remaining to 0 and finishedAt
+  Future<int> finishOngoingPurchase(int id, DateTime finishedAt) async {
+    final db = await database;
+    return await db.update(
+      'price_history',
+      {
+        'quantity_remaining': 0.0,
+        'finished_at': finishedAt.toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<int> deletePriceHistory(int id) async {
     final db = await database;
     return await db.delete(

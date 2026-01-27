@@ -616,6 +616,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
 
         if (_subItems.isEmpty) {
           // Main item (only when no sub-items)
+
+          // Finish the most recent ongoing purchase if tracking usage
+          if (trackUsage) {
+            final ongoingPurchase = await _databaseService.getMostRecentOngoingPurchase(_currentItem!.id!);
+            if (ongoingPurchase != null) {
+              await _databaseService.finishOngoingPurchase(ongoingPurchase.id!, recordedAt);
+            }
+          }
+
           final priceHistory = PriceHistory(
             itemId: _currentItem!.id!,
             price: price,
@@ -642,6 +651,18 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         } else {
           // Sub-item
           final subItem = _subItems[_selectedTabIndex];
+
+          // Finish the most recent ongoing purchase if tracking usage
+          if (trackUsage) {
+            final ongoingPurchase = await _databaseService.getMostRecentOngoingPurchase(
+              _currentItem!.id!,
+              subItemId: subItem.id!,
+            );
+            if (ongoingPurchase != null) {
+              await _databaseService.finishOngoingPurchase(ongoingPurchase.id!, recordedAt);
+            }
+          }
+
           final priceHistory = PriceHistory(
             itemId: _currentItem!.id!,
             subItemId: subItem.id!,
