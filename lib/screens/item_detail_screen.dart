@@ -19,7 +19,8 @@ class ItemDetailScreen extends StatefulWidget {
   State<ItemDetailScreen> createState() => _ItemDetailScreenState();
 }
 
-class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerProviderStateMixin {
+class _ItemDetailScreenState extends State<ItemDetailScreen>
+    with SingleTickerProviderStateMixin {
   final DatabaseService _databaseService = DatabaseService();
   List<PriceHistory> _priceHistory = [];
   List<SubItem> _subItems = [];
@@ -34,7 +35,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
 
   // Cache for sub-items data to avoid reloading on tab switch
   final Map<int, List<PriceHistory>> _subItemHistoryCache = {};
-  final Map<int, Map<String, Map<String, dynamic>>> _subItemMonthlySpendingCache = {};
+  final Map<int, Map<String, Map<String, dynamic>>>
+      _subItemMonthlySpendingCache = {};
 
   // Preserve cycle index for the purchase period stats card
   int _purchaseCycleIndex = 0;
@@ -84,7 +86,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
     });
 
     try {
-      final subItems = await _databaseService.getSubItemsByItemId(widget.item.id!);
+      final subItems =
+          await _databaseService.getSubItemsByItemId(widget.item.id!);
       final updatedItem = await _databaseService.getItemById(widget.item.id!);
 
       List<PriceHistory> history;
@@ -100,15 +103,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         final futures = <Future>[];
         for (int i = 0; i < subItems.length; i++) {
           final subItem = subItems[i];
-          futures.add(
-            Future.wait([
-              _databaseService.getPriceHistoryForSubItem(widget.item.id!, subItem.id!),
-              _databaseService.getMonthlySpendingForSubItem(widget.item.id!, subItem.id!),
-            ]).then((results) {
-              _subItemHistoryCache[i] = results[0] as List<PriceHistory>;
-              _subItemMonthlySpendingCache[i] = results[1] as Map<String, Map<String, dynamic>>;
-            })
-          );
+          futures.add(Future.wait([
+            _databaseService.getPriceHistoryForSubItem(
+                widget.item.id!, subItem.id!),
+            _databaseService.getMonthlySpendingForSubItem(
+                widget.item.id!, subItem.id!),
+          ]).then((results) {
+            _subItemHistoryCache[i] = results[0] as List<PriceHistory>;
+            _subItemMonthlySpendingCache[i] =
+                results[1] as Map<String, Map<String, dynamic>>;
+          }));
         }
 
         await Future.wait(futures);
@@ -118,8 +122,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         monthlySpending = _subItemMonthlySpendingCache[0]!;
       } else {
         // No sub-items, load parent item data
-        history = await _databaseService.getPriceHistory(widget.item.id!, includeSubItems: false);
-        monthlySpending = await _databaseService.getMonthlySpendingForItem(widget.item.id!);
+        history = await _databaseService.getPriceHistory(widget.item.id!,
+            includeSubItems: false);
+        monthlySpending =
+            await _databaseService.getMonthlySpendingForItem(widget.item.id!);
       }
 
       // Dispose old tab controller BEFORE setState to avoid ticker issues
@@ -177,9 +183,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
       final subItem = _subItems[_selectedTabIndex];
       final history = await _databaseService.getPriceHistoryForSubItem(
           widget.item.id!, subItem.id!);
-      final monthlySpending =
-          await _databaseService.getMonthlySpendingForSubItem(
-              widget.item.id!, subItem.id!);
+      final monthlySpending = await _databaseService
+          .getMonthlySpendingForSubItem(widget.item.id!, subItem.id!);
 
       setState(() {
         _priceHistory = history;
@@ -319,8 +324,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                        borderSide: const BorderSide(
+                            color: Color(0xFFFF8C00), width: 2),
                       ),
                       prefixIcon:
                           const Icon(Icons.add_box, color: Color(0xFF4CAF50)),
@@ -361,7 +366,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                                 boxShadow: recordRemaining
                                     ? [
                                         BoxShadow(
-                                          color: Colors.black.withValues(alpha: 0.1),
+                                          color: Colors.black
+                                              .withValues(alpha: 0.1),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         )
@@ -401,7 +407,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                                 boxShadow: !recordRemaining
                                     ? [
                                         BoxShadow(
-                                          color: Colors.black.withValues(alpha: 0.1),
+                                          color: Colors.black
+                                              .withValues(alpha: 0.1),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         )
@@ -440,8 +447,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                        borderSide: const BorderSide(
+                            color: Color(0xFFFF8C00), width: 2),
                       ),
                       prefixIcon: Icon(
                         recordRemaining ? Icons.inventory : Icons.remove_circle,
@@ -561,7 +568,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       'price': priceController.text,
                       'date': selectedDate,
                       'description': descriptionController.text.trim(),
-                      'quantityPurchased': quantityPurchasedController.text.trim(),
+                      'quantityPurchased':
+                          quantityPurchasedController.text.trim(),
                       'quantityValue': quantityValueController.text.trim(),
                       'recordRemaining': recordRemaining,
                     });
@@ -619,9 +627,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
 
           // Finish the most recent ongoing purchase if tracking usage
           if (trackUsage) {
-            final ongoingPurchase = await _databaseService.getMostRecentOngoingPurchase(_currentItem!.id!);
+            final ongoingPurchase = await _databaseService
+                .getMostRecentOngoingPurchase(_currentItem!.id!);
             if (ongoingPurchase != null) {
-              await _databaseService.finishOngoingPurchase(ongoingPurchase.id!, recordedAt);
+              await _databaseService.finishOngoingPurchase(
+                  ongoingPurchase.id!, recordedAt);
             }
           }
 
@@ -654,12 +664,14 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
 
           // Finish the most recent ongoing purchase if tracking usage
           if (trackUsage) {
-            final ongoingPurchase = await _databaseService.getMostRecentOngoingPurchase(
+            final ongoingPurchase =
+                await _databaseService.getMostRecentOngoingPurchase(
               _currentItem!.id!,
               subItemId: subItem.id!,
             );
             if (ongoingPurchase != null) {
-              await _databaseService.finishOngoingPurchase(ongoingPurchase.id!, recordedAt);
+              await _databaseService.finishOngoingPurchase(
+                  ongoingPurchase.id!, recordedAt);
             }
           }
 
@@ -850,16 +862,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
   }
 
   String _formatPrice(double price) {
-    if (price >= 1000) {
-      double kValue = price / 1000;
-      if (kValue == kValue.round()) {
-        return '${kValue.round()}k Rwf';
-      } else {
-        return '${kValue.toStringAsFixed(1)}k Rwf';
-      }
-    } else {
-      return '${NumberFormat('#,###').format(price.round())} Rwf';
-    }
+    return '${NumberFormat('#,###').format(price.round())} Rwf';
   }
 
   List<Widget> _buildPriceHistoryList(List<PriceHistory> allHistory) {
@@ -991,15 +994,15 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
-                                    title: Row(
+                                    title: const Row(
                                       children: [
-                                        const Icon(
+                                        Icon(
                                           Icons.description,
                                           color: Color(0xFFFF8C00),
                                           size: 20,
                                         ),
-                                        const SizedBox(width: 8),
-                                        const Text(
+                                        SizedBox(width: 8),
+                                        Text(
                                           'Description',
                                           style: TextStyle(fontSize: 18),
                                         ),
@@ -1228,10 +1231,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
       text: history.quantityPurchased?.toString() ?? '',
     );
     final quantityValueController = TextEditingController(
-      text: (history.quantityRemaining ?? history.quantityConsumed)?.toString() ?? '',
+      text:
+          (history.quantityRemaining ?? history.quantityConsumed)?.toString() ??
+              '',
     );
     DateTime selectedDate = history.recordedAt;
-    bool recordRemaining = history.quantityRemaining != null || history.quantityConsumed == null;
+    bool recordRemaining =
+        history.quantityRemaining != null || history.quantityConsumed == null;
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -1324,8 +1330,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                        borderSide: const BorderSide(
+                            color: Color(0xFFFF8C00), width: 2),
                       ),
                       prefixIcon:
                           const Icon(Icons.add_box, color: Color(0xFF4CAF50)),
@@ -1366,7 +1372,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                                 boxShadow: recordRemaining
                                     ? [
                                         BoxShadow(
-                                          color: Colors.black.withValues(alpha: 0.1),
+                                          color: Colors.black
+                                              .withValues(alpha: 0.1),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         )
@@ -1406,7 +1413,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                                 boxShadow: !recordRemaining
                                     ? [
                                         BoxShadow(
-                                          color: Colors.black.withValues(alpha: 0.1),
+                                          color: Colors.black
+                                              .withValues(alpha: 0.1),
                                           blurRadius: 4,
                                           offset: const Offset(0, 2),
                                         )
@@ -1445,8 +1453,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide:
-                            const BorderSide(color: Color(0xFFFF8C00), width: 2),
+                        borderSide: const BorderSide(
+                            color: Color(0xFFFF8C00), width: 2),
                       ),
                       prefixIcon: Icon(
                         recordRemaining ? Icons.inventory : Icons.remove_circle,
@@ -1566,7 +1574,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       'price': priceController.text,
                       'date': selectedDate,
                       'description': descriptionController.text.trim(),
-                      'quantityPurchased': quantityPurchasedController.text.trim(),
+                      'quantityPurchased':
+                          quantityPurchasedController.text.trim(),
                       'quantityValue': quantityValueController.text.trim(),
                       'recordRemaining': recordRemaining,
                     });
@@ -1619,10 +1628,12 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
             if (value != null) {
               if (isRemaining) {
                 quantityRemaining = value;
-                clearConsumed = true; // Clear consumed if switching to remaining
+                clearConsumed =
+                    true; // Clear consumed if switching to remaining
               } else {
                 quantityConsumed = value;
-                clearRemaining = true; // Clear remaining if switching to consumed
+                clearRemaining =
+                    true; // Clear remaining if switching to consumed
               }
             }
           } else {
@@ -1647,8 +1658,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
 
         // Update item's current price if this is the most recent entry
         if (_subItems.isEmpty) {
-          final allHistory =
-              await _databaseService.getPriceHistory(_currentItem!.id!, includeSubItems: false);
+          final allHistory = await _databaseService
+              .getPriceHistory(_currentItem!.id!, includeSubItems: false);
           final mostRecent = allHistory
               .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
           if (mostRecent.id == updatedPriceHistory.id) {
@@ -1937,8 +1948,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         // Update current price based on whether this is main item or sub-item
         if (_subItems.isEmpty) {
           // Main item - update item's current price
-          final allHistory =
-              await _databaseService.getPriceHistory(_currentItem!.id!, includeSubItems: false);
+          final allHistory = await _databaseService
+              .getPriceHistory(_currentItem!.id!, includeSubItems: false);
           if (allHistory.isNotEmpty) {
             final mostRecent = allHistory
                 .reduce((a, b) => a.recordedAt.isAfter(b.recordedAt) ? a : b);
@@ -2059,7 +2070,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                       final formatted = NumberFormat('#,###').format(number);
                       return TextEditingValue(
                         text: formatted,
-                        selection: TextSelection.collapsed(offset: formatted.length),
+                        selection:
+                            TextSelection.collapsed(offset: formatted.length),
                       );
                     }),
                   ],
@@ -2139,7 +2151,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                     title: const Text('Track daily usage'),
                     subtitle: Text(
                       'Monitor consumption for this sub-item',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade600),
                     ),
                     value: trackUsage,
                     onChanged: (value) {
@@ -2187,19 +2200,20 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                           runSpacing: 8,
                           children: [
                             ..._predefinedUnits.map((unit) => ChoiceChip(
-                              label: Text(unit),
-                              selected: !useCustomUnit && selectedUnit == unit,
-                              onSelected: (selected) {
-                                setState(() {
-                                  if (selected) {
-                                    selectedUnit = unit;
-                                    useCustomUnit = false;
-                                    customUnitController.clear();
-                                  }
-                                });
-                              },
-                              selectedColor: const Color(0xFFFFE0B2),
-                            )),
+                                  label: Text(unit),
+                                  selected:
+                                      !useCustomUnit && selectedUnit == unit,
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        selectedUnit = unit;
+                                        useCustomUnit = false;
+                                        customUnitController.clear();
+                                      }
+                                    });
+                                  },
+                                  selectedColor: const Color(0xFFFFE0B2),
+                                )),
                             ChoiceChip(
                               label: const Text('Custom'),
                               selected: useCustomUnit,
@@ -2245,11 +2259,13 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
             ElevatedButton(
               onPressed: () {
                 final name = nameController.text.trim();
-                final priceText = priceController.text.replaceAll(',', '').trim();
+                final priceText =
+                    priceController.text.replaceAll(',', '').trim();
                 if (name.isNotEmpty && priceText.isNotEmpty) {
                   String? usageUnit;
                   if (trackUsage) {
-                    if (useCustomUnit && customUnitController.text.trim().isNotEmpty) {
+                    if (useCustomUnit &&
+                        customUnitController.text.trim().isNotEmpty) {
                       usageUnit = customUnitController.text.trim();
                     } else if (selectedUnit != null) {
                       usageUnit = selectedUnit;
@@ -2357,7 +2373,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                     title: const Text('Track daily usage'),
                     subtitle: Text(
                       'Monitor consumption for this sub-item',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade600),
                     ),
                     value: trackUsage,
                     onChanged: (value) {
@@ -2405,19 +2422,20 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                           runSpacing: 8,
                           children: [
                             ..._predefinedUnits.map((unit) => ChoiceChip(
-                              label: Text(unit),
-                              selected: !useCustomUnit && selectedUnit == unit,
-                              onSelected: (selected) {
-                                setState(() {
-                                  if (selected) {
-                                    selectedUnit = unit;
-                                    useCustomUnit = false;
-                                    customUnitController.clear();
-                                  }
-                                });
-                              },
-                              selectedColor: const Color(0xFFFFE0B2),
-                            )),
+                                  label: Text(unit),
+                                  selected:
+                                      !useCustomUnit && selectedUnit == unit,
+                                  onSelected: (selected) {
+                                    setState(() {
+                                      if (selected) {
+                                        selectedUnit = unit;
+                                        useCustomUnit = false;
+                                        customUnitController.clear();
+                                      }
+                                    });
+                                  },
+                                  selectedColor: const Color(0xFFFFE0B2),
+                                )),
                             ChoiceChip(
                               label: const Text('Custom'),
                               selected: useCustomUnit,
@@ -2466,7 +2484,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                 if (name.isNotEmpty) {
                   String? usageUnit;
                   if (trackUsage) {
-                    if (useCustomUnit && customUnitController.text.trim().isNotEmpty) {
+                    if (useCustomUnit &&
+                        customUnitController.text.trim().isNotEmpty) {
                       usageUnit = customUnitController.text.trim();
                     } else if (selectedUnit != null) {
                       usageUnit = selectedUnit;
@@ -2522,7 +2541,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Sub-Item'),
-        content: Text('Are you sure you want to delete "${subItem.name}"? This will also delete all its price records.'),
+        content: Text(
+            'Are you sure you want to delete "${subItem.name}"? This will also delete all its price records.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -2723,7 +2743,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
 
   @override
   Widget build(BuildContext context) {
-    if (_currentItem == null || (_subItems.isNotEmpty && _tabController == null)) {
+    if (_currentItem == null ||
+        (_subItems.isNotEmpty && _tabController == null)) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       );
@@ -2731,7 +2752,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
 
     return Scaffold(
       appBar: PreferredSize(
-        preferredSize: Size.fromHeight(_subItems.isEmpty || _tabController == null ? 60 : 110),
+        preferredSize: Size.fromHeight(
+            _subItems.isEmpty || _tabController == null ? 60 : 110),
         child: Container(
           decoration: const BoxDecoration(
             gradient: AppColors.primaryGradient,
@@ -2759,7 +2781,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                   },
                 ),
               ],
-              if (_subItems.isEmpty) // Show edit button only when no sub-items (main item only)
+              if (_subItems
+                  .isEmpty) // Show edit button only when no sub-items (main item only)
                 IconButton(
                   icon: const Icon(Icons.edit),
                   tooltip: 'Edit Item',
@@ -2793,15 +2816,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
                     indicatorWeight: 3,
                     labelColor: Colors.white,
                     unselectedLabelColor: Colors.white70,
-                    tabs: _subItems.map((subItem) => Tab(
-                      child: Row(
-                        children: [
-                          const Icon(Icons.category, size: 16),
-                          const SizedBox(width: 8),
-                          Text(subItem.name),
-                        ],
-                      ),
-                    )).toList(),
+                    tabs: _subItems
+                        .map((subItem) => Tab(
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.category, size: 16),
+                                  const SizedBox(width: 8),
+                                  Text(subItem.name),
+                                ],
+                              ),
+                            ))
+                        .toList(),
                   ),
           ),
         ),
@@ -2812,7 +2837,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
               ? _buildItemContent()
               : TabBarView(
                   controller: _tabController,
-                  children: _subItems.map((subItem) => _buildItemContent()).toList(),
+                  children:
+                      _subItems.map((subItem) => _buildItemContent()).toList(),
                 ),
     );
   }
@@ -2825,9 +2851,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
     final double currentPrice = _subItems.isEmpty
         ? _currentItem!.currentPrice
         : _subItems[_selectedTabIndex].currentPrice;
-    final String? description = _subItems.isEmpty
-        ? _currentItem!.description
-        : null;
+    final String? description =
+        _subItems.isEmpty ? _currentItem!.description : null;
     final bool trackUsage = _subItems.isEmpty
         ? _currentItem!.trackUsage
         : _subItems[_selectedTabIndex].trackUsage;
@@ -2836,609 +2861,595 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> with SingleTickerPr
         : (_subItems[_selectedTabIndex].usageUnit ?? 'units');
 
     return ListView(
-              padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Item Info Card
+        Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFFF8C00), Color(0xFFFF6B35)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Item Info Card
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFFF8C00), Color(0xFFFF6B35)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFFF8C00).withValues(alpha: 0.3),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 70,
-                              height: 70,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.25),
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.4),
-                                  width: 3,
-                                ),
-                              ),
-                              child: Center(
-                                child: Text(
-                                  displayName[0].toUpperCase(),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    displayName,
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  if (description != null) ...[
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      description,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.white
-                                            .withValues(alpha: 0.85),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
+                Row(
+                  children: [
+                    Container(
+                      width: 70,
+                      height: 70,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          width: 3,
                         ),
-                        const SizedBox(height: 20),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Current Price',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.white
-                                            .withValues(alpha: 0.85),
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${NumberFormat('#,###').format(currentPrice.round())} Rwf',
-                                      style: const TextStyle(
-                                        fontSize: 26,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (_priceHistory
-                                      .where((entry) =>
-                                          entry.entryType == 'manual')
-                                      .length >=
-                                  2)
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        'Total Change',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white
-                                              .withValues(alpha: 0.85),
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 4,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.2),
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                        ),
-                                        child: Text(
-                                          _getPriceChangeText(),
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                            ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          displayName[0].toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Purchase Period Stats Card (only shown when usage tracking is enabled)
-                if (trackUsage)
-                  FutureBuilder<List<Map<String, dynamic>>>(
-                    future: _subItems.isEmpty
-                        ? _databaseService.getPurchaseCycleStats(_currentItem!.id!)
-                        : _databaseService.getPurchaseCycleStats(
-                            _currentItem!.id!,
-                            subItemId: _subItems[_selectedTabIndex].id,
-                          ),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) {
-                        return const SizedBox.shrink();
-                      }
-
-                      final cycles = snapshot.data!;
-
-                      // Don't show if no cycles
-                      if (cycles.isEmpty) {
-                        return Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.trending_up,
-                                  size: 48,
-                                  color: Colors.grey.shade400,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'No usage data yet',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.grey.shade600,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Add a price entry with quantity purchased to start tracking usage',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-
-                      return _PurchasePeriodStatsCard(
-                        cycles: cycles,
-                        usageUnit: usageUnit,
-                        buildStatItem: _buildStatItem,
-                        initialCycleIndex: _purchaseCycleIndex,
-                        onCycleIndexChanged: (index) {
-                          _purchaseCycleIndex = index;
-                        },
-                      );
-                    },
-                  ),
-                if (trackUsage) const SizedBox(height: 16),
-
-                // Purchase Consistency Analysis
-                if (_priceHistory
-                        .where((entry) => entry.entryType == 'manual')
-                        .length >=
-                    2)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Builder(
-                        builder: (context) {
-                          final analysis = _getPurchaseConsistencyAnalysis();
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    analysis['icon'] as IconData,
-                                    color: analysis['color'] as Color,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  const Text(
-                                    'Purchase Pattern',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 12, vertical: 6),
-                                    decoration: BoxDecoration(
-                                      color: (analysis['color'] as Color)
-                                          .withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: analysis['color'] as Color,
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      analysis['summary'] as String,
-                                      style: TextStyle(
-                                        color: analysis['color'] as Color,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                analysis['description'] as String,
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
                       ),
                     ),
-                  ),
-                const SizedBox(height: 16),
-
-                // Monthly Spending (Frequent Purchases)
-                if (_monthlySpendingKeys.isNotEmpty)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
+                    const SizedBox(width: 16),
+                    Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.calendar_month,
-                                color: AppColors.accentStart,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Monthly Spending',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      'Monthly purchase summary',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          Text(
+                            displayName,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
                           ),
-                          const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              IconButton(
-                                onPressed: _currentMonthIndex <
-                                        _monthlySpendingKeys.length - 1
-                                    ? _previousMonthlySpendingMonth
-                                    : null,
-                                icon: const Icon(Icons.arrow_left),
-                                tooltip: 'Previous month',
+                          if (description != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              description,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.white.withValues(alpha: 0.85),
                               ),
-                              Expanded(
-                                child: Builder(
-                                  builder: (context) {
-                                    if (_monthlySpendingKeys.isEmpty) {
-                                      return const Center(
-                                        child:
-                                            Text('No monthly data available'),
-                                      );
-                                    }
-
-                                    final currentMonth = _monthlySpendingKeys[
-                                        _currentMonthIndex];
-                                    final data =
-                                        _monthlySpending[currentMonth]!;
-                                    final frequency = data['frequency'] as int;
-                                    final totalSpent =
-                                        data['total_spent'] as double;
-
-                                    return Column(
-                                      children: [
-                                        Text(
-                                          _formatMonth(currentMonth),
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 4,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            gradient: AppColors.accentGradient,
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                          ),
-                                          child: Text(
-                                            '$frequency purchases',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Column(
-                                          children: [
-                                            const Text(
-                                              'Total Spent',
-                                              style: TextStyle(fontSize: 12),
-                                            ),
-                                            Text(
-                                              '${NumberFormat('#,###').format(totalSpent.round())} Rwf',
-                                              style: const TextStyle(
-                                                fontSize: 24,
-                                                fontWeight: FontWeight.bold,
-                                                color: AppColors.accentStart,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    );
-                                  },
-                                ),
-                              ),
-                              IconButton(
-                                onPressed: _currentMonthIndex > 0
-                                    ? _nextMonthlySpendingMonth
-                                    : null,
-                                icon: const Icon(Icons.arrow_right),
-                                tooltip: 'Next month',
-                              ),
-                            ],
-                          ),
-                          if (_monthlySpendingKeys.length > 1) ...[
-                            const SizedBox(height: 12),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text(
-                                  '${_currentMonthIndex + 1} of ${_monthlySpendingKeys.length}',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
                             ),
                           ],
                         ],
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                if (_monthlySpendingKeys.isNotEmpty) const SizedBox(height: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Current Price',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withValues(alpha: 0.85),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${NumberFormat('#,###').format(currentPrice.round())} Rwf',
+                              style: const TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (_priceHistory
+                              .where((entry) => entry.entryType == 'manual')
+                              .length >=
+                          2)
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                'Total Change',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  _getPriceChangeText(),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
 
-                // Price Chart
-                if (_priceHistory
-                        .where((entry) => entry.entryType == 'manual')
-                        .length >=
-                    2)
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        // Purchase Period Stats Card (only shown when usage tracking is enabled)
+        if (trackUsage)
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _subItems.isEmpty
+                ? _databaseService.getPurchaseCycleStats(_currentItem!.id!)
+                : _databaseService.getPurchaseCycleStats(
+                    _currentItem!.id!,
+                    subItemId: _subItems[_selectedTabIndex].id,
+                  ),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const SizedBox.shrink();
+              }
+
+              final cycles = snapshot.data!;
+
+              // Don't show if no cycles
+              if (cycles.isEmpty) {
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.trending_up,
+                          size: 48,
+                          color: Colors.grey.shade400,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'No usage data yet',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Add a price entry with quantity purchased to start tracking usage',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              return _PurchasePeriodStatsCard(
+                cycles: cycles,
+                usageUnit: usageUnit,
+                buildStatItem: _buildStatItem,
+                initialCycleIndex: _purchaseCycleIndex,
+                onCycleIndexChanged: (index) {
+                  _purchaseCycleIndex = index;
+                },
+              );
+            },
+          ),
+        if (trackUsage) const SizedBox(height: 16),
+
+        // Purchase Consistency Analysis
+        if (_priceHistory
+                .where((entry) => entry.entryType == 'manual')
+                .length >=
+            2)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Builder(
+                builder: (context) {
+                  final analysis = _getPurchaseConsistencyAnalysis();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
+                          Icon(
+                            analysis['icon'] as IconData,
+                            color: analysis['color'] as Color,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
                           const Text(
-                            'Price History Chart',
+                            'Purchase Pattern',
                             style: TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            height: 200,
-                            child: LineChart(
-                              LineChartData(
-                                gridData: const FlGridData(show: true),
-                                titlesData: FlTitlesData(
-                                  bottomTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      reservedSize: 30,
-                                      interval: 1,
-                                      getTitlesWidget: (value, meta) {
-                                        // Only show labels for actual data points to avoid overcrowding
-                                        final chartHistory = _priceHistory
-                                            .where((entry) =>
-                                                entry.entryType == 'manual')
-                                            .toList()
-                                          ..sort((a, b) => a.recordedAt
-                                              .compareTo(b.recordedAt));
-
-                                        // Show every nth label based on number of data points
-                                        final totalPoints = chartHistory.length;
-                                        int skipInterval = 1;
-                                        if (totalPoints > 8) {
-                                          skipInterval =
-                                              (totalPoints / 6).ceil();
-                                        }
-
-                                        final indexInt = value.round();
-                                        if (indexInt % skipInterval != 0 &&
-                                            indexInt != totalPoints - 1) {
-                                          return const SizedBox.shrink();
-                                        }
-
-                                        final date = _getDateFromDays(value);
-                                        return Transform.rotate(
-                                          angle:
-                                              -0.3, // Slight rotation to fit better
-                                          child: Text(
-                                            DateFormat('MM/dd').format(date),
-                                            style: const TextStyle(fontSize: 9),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  leftTitles: AxisTitles(
-                                    sideTitles: SideTitles(
-                                      showTitles: true,
-                                      getTitlesWidget: (value, meta) {
-                                        String formatPrice(double price) {
-                                          if (price >= 1000) {
-                                            double kValue = price / 1000;
-                                            if (kValue == kValue.round()) {
-                                              return '${kValue.round()}k';
-                                            } else {
-                                              return '${kValue.toStringAsFixed(1)}k';
-                                            }
-                                          } else {
-                                            return '${price.round()}';
-                                          }
-                                        }
-
-                                        return Text(
-                                          formatPrice(value),
-                                          style: const TextStyle(fontSize: 10),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  topTitles: const AxisTitles(
-                                      sideTitles:
-                                          SideTitles(showTitles: false)),
-                                  rightTitles: const AxisTitles(
-                                      sideTitles:
-                                          SideTitles(showTitles: false)),
-                                ),
-                                borderData: FlBorderData(show: true),
-                                minX: 0,
-                                maxX: _maxDays,
-                                minY: _minPrice * 0.9,
-                                maxY: _maxPrice * 1.1,
-                                lineBarsData: [
-                                  LineChartBarData(
-                                    spots: _generateChartData(),
-                                    isCurved: true,
-                                    gradient: AppColors.primaryGradient,
-                                    barWidth: 3,
-                                    dotData: const FlDotData(show: true),
-                                  ),
-                                ],
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: (analysis['color'] as Color)
+                                  .withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: analysis['color'] as Color,
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              analysis['summary'] as String,
+                              style: TextStyle(
+                                color: analysis['color'] as Color,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
                               ),
                             ),
                           ),
                         ],
                       ),
-                    ),
+                      const SizedBox(height: 8),
+                      Text(
+                        analysis['description'] as String,
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        const SizedBox(height: 16),
+
+        // Monthly Spending (Frequent Purchases)
+        if (_monthlySpendingKeys.isNotEmpty)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.calendar_month,
+                        color: AppColors.accentStart,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Monthly Spending',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Monthly purchase summary',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        onPressed:
+                            _currentMonthIndex < _monthlySpendingKeys.length - 1
+                                ? _previousMonthlySpendingMonth
+                                : null,
+                        icon: const Icon(Icons.arrow_left),
+                        tooltip: 'Previous month',
+                      ),
+                      Expanded(
+                        child: Builder(
+                          builder: (context) {
+                            if (_monthlySpendingKeys.isEmpty) {
+                              return const Center(
+                                child: Text('No monthly data available'),
+                              );
+                            }
 
-                const SizedBox(height: 16),
+                            final currentMonth =
+                                _monthlySpendingKeys[_currentMonthIndex];
+                            final data = _monthlySpending[currentMonth]!;
+                            final frequency = data['frequency'] as int;
+                            final totalSpent = data['total_spent'] as double;
 
-                // Price History List
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                            return Column(
+                              children: [
+                                Text(
+                                  _formatMonth(currentMonth),
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: AppColors.accentGradient,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '$frequency purchases',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Column(
+                                  children: [
+                                    const Text(
+                                      'Total Spent',
+                                      style: TextStyle(fontSize: 12),
+                                    ),
+                                    Text(
+                                      '${NumberFormat('#,###').format(totalSpent.round())} Rwf',
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppColors.accentStart,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _currentMonthIndex > 0
+                            ? _nextMonthlySpendingMonth
+                            : null,
+                        icon: const Icon(Icons.arrow_right),
+                        tooltip: 'Next month',
+                      ),
+                    ],
+                  ),
+                  if (_monthlySpendingKeys.length > 1) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
-                          'Price History',
+                        Text(
+                          '${_currentMonthIndex + 1} of ${_monthlySpendingKeys.length}',
                           style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.grey[600],
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        if (_priceHistory.isEmpty)
-                          const Text('No price history available')
-                        else if (_priceHistory
-                            .where((entry) => entry.entryType == 'manual')
-                            .isEmpty)
-                          const Text('No manual price entries yet')
-                        else
-                          ..._buildPriceHistoryList(_priceHistory),
                       ],
                     ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        if (_monthlySpendingKeys.isNotEmpty) const SizedBox(height: 16),
+
+        // Price Chart
+        if (_priceHistory
+                .where((entry) => entry.entryType == 'manual')
+                .length >=
+            2)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Price History Chart',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 200,
+                    child: LineChart(
+                      LineChartData(
+                        gridData: const FlGridData(show: true),
+                        titlesData: FlTitlesData(
+                          bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              reservedSize: 30,
+                              interval: 1,
+                              getTitlesWidget: (value, meta) {
+                                // Only show labels for actual data points to avoid overcrowding
+                                final chartHistory = _priceHistory
+                                    .where(
+                                        (entry) => entry.entryType == 'manual')
+                                    .toList()
+                                  ..sort((a, b) =>
+                                      a.recordedAt.compareTo(b.recordedAt));
+
+                                // Show every nth label based on number of data points
+                                final totalPoints = chartHistory.length;
+                                int skipInterval = 1;
+                                if (totalPoints > 8) {
+                                  skipInterval = (totalPoints / 6).ceil();
+                                }
+
+                                final indexInt = value.round();
+                                if (indexInt % skipInterval != 0 &&
+                                    indexInt != totalPoints - 1) {
+                                  return const SizedBox.shrink();
+                                }
+
+                                final date = _getDateFromDays(value);
+                                return Transform.rotate(
+                                  angle: -0.3, // Slight rotation to fit better
+                                  child: Text(
+                                    DateFormat('MM/dd').format(date),
+                                    style: const TextStyle(fontSize: 9),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          leftTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              getTitlesWidget: (value, meta) {
+                                String formatPrice(double price) {
+                                  if (price >= 1000) {
+                                    double kValue = price / 1000;
+                                    if (kValue == kValue.round()) {
+                                      return '${kValue.round()}k';
+                                    } else {
+                                      return '${kValue.toStringAsFixed(1)}k';
+                                    }
+                                  } else {
+                                    return '${price.round()}';
+                                  }
+                                }
+
+                                return Text(
+                                  formatPrice(value),
+                                  style: const TextStyle(fontSize: 10),
+                                );
+                              },
+                            ),
+                          ),
+                          topTitles: const AxisTitles(
+                              sideTitles: SideTitles(showTitles: false)),
+                          rightTitles: const AxisTitles(
+                              sideTitles: SideTitles(showTitles: false)),
+                        ),
+                        borderData: FlBorderData(show: true),
+                        minX: 0,
+                        maxX: _maxDays,
+                        minY: _minPrice * 0.9,
+                        maxY: _maxPrice * 1.1,
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: _generateChartData(),
+                            isCurved: true,
+                            gradient: AppColors.primaryGradient,
+                            barWidth: 3,
+                            dotData: const FlDotData(show: true),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+        const SizedBox(height: 16),
+
+        // Price History List
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Price History',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
+                const SizedBox(height: 16),
+                if (_priceHistory.isEmpty)
+                  const Text('No price history available')
+                else if (_priceHistory
+                    .where((entry) => entry.entryType == 'manual')
+                    .isEmpty)
+                  const Text('No manual price entries yet')
+                else
+                  ..._buildPriceHistoryList(_priceHistory),
               ],
-            );
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -3464,7 +3475,8 @@ class _PurchasePeriodStatsCard extends StatefulWidget {
   });
 
   @override
-  State<_PurchasePeriodStatsCard> createState() => _PurchasePeriodStatsCardState();
+  State<_PurchasePeriodStatsCard> createState() =>
+      _PurchasePeriodStatsCardState();
 }
 
 class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
@@ -3474,7 +3486,8 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
   void initState() {
     super.initState();
     // Ensure index is within bounds
-    _currentCycleIndex = widget.initialCycleIndex.clamp(0, widget.cycles.length - 1);
+    _currentCycleIndex =
+        widget.initialCycleIndex.clamp(0, widget.cycles.length - 1);
   }
 
   void _goToPreviousCycle() {
@@ -3495,7 +3508,8 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
     }
   }
 
-  String _formatDateRange(DateTime purchaseDate, DateTime? endDate, bool isCurrentOngoing) {
+  String _formatDateRange(
+      DateTime purchaseDate, DateTime? endDate, bool isCurrentOngoing) {
     final startStr = DateFormat('MMM dd, yyyy').format(purchaseDate);
     if (endDate != null) {
       // Completed: show purchase date - end date
@@ -3522,15 +3536,19 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
     final isComplete = purchase['isComplete'] as bool;
     final price = purchase['price'] as double?;
     final usedFallback = purchase['usedFallback'] as bool? ?? false;
-    final usedHistoricalPattern = purchase['usedHistoricalPattern'] as bool? ?? false;
+    final usedHistoricalPattern =
+        purchase['usedHistoricalPattern'] as bool? ?? false;
 
     // Calculate display values - avoid N/A when we can infer values
-    final fallbackDailyUsage = (isComplete && quantityPurchased != null && daysTracked > 0)
-        ? quantityPurchased / daysTracked
-        : null;
+    final fallbackDailyUsage =
+        (isComplete && quantityPurchased != null && daysTracked > 0)
+            ? quantityPurchased / daysTracked
+            : null;
     final displayDailyUsage = avgDailyUsage ?? fallbackDailyUsage;
-    final displayConsumed = consumed ?? (isComplete && quantityPurchased != null ? quantityPurchased : null);
-    final displayRemaining = quantityRemaining ?? (isComplete && quantityPurchased != null ? 0.0 : null);
+    final displayConsumed = consumed ??
+        (isComplete && quantityPurchased != null ? quantityPurchased : null);
+    final displayRemaining = quantityRemaining ??
+        (isComplete && quantityPurchased != null ? 0.0 : null);
 
     final bool canGoLeft = _currentCycleIndex < widget.cycles.length - 1;
     final bool canGoRight = _currentCycleIndex > 0;
@@ -3587,7 +3605,9 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                   onPressed: canGoLeft ? _goToPreviousCycle : null,
                   icon: Icon(
                     Icons.chevron_left,
-                    color: canGoLeft ? const Color(0xFFFF8C00) : Colors.grey.shade300,
+                    color: canGoLeft
+                        ? const Color(0xFFFF8C00)
+                        : Colors.grey.shade300,
                   ),
                   tooltip: 'Older purchase',
                 ),
@@ -3595,7 +3615,9 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                   onPressed: canGoRight ? _goToNextCycle : null,
                   icon: Icon(
                     Icons.chevron_right,
-                    color: canGoRight ? const Color(0xFFFF8C00) : Colors.grey.shade300,
+                    color: canGoRight
+                        ? const Color(0xFFFF8C00)
+                        : Colors.grey.shade300,
                   ),
                   tooltip: 'Newer purchase',
                 ),
@@ -3612,11 +3634,13 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
+                  Icon(Icons.calendar_today,
+                      size: 16, color: Colors.grey.shade600),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      _formatDateRange(purchaseDate, endDate, _currentCycleIndex == 0 && !isComplete),
+                      _formatDateRange(purchaseDate, endDate,
+                          _currentCycleIndex == 0 && !isComplete),
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.grey.shade700,
@@ -3625,9 +3649,12 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                     ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: isComplete ? const Color(0xFF4CAF50) : const Color(0xFFFF9800),
+                      color: isComplete
+                          ? const Color(0xFF4CAF50)
+                          : const Color(0xFFFF9800),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -3665,7 +3692,7 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                     icon: Icons.speed,
                     label: 'Daily Usage',
                     value: displayDailyUsage != null && displayDailyUsage > 0
-                        ? '${displayDailyUsage.toStringAsFixed(1)} ${widget.usageUnit}'
+                        ? '${displayDailyUsage % 1 == 0 ? displayDailyUsage.toInt().toString() : displayDailyUsage.toStringAsFixed(2).replaceAll(RegExp(r'0+$'), '')} ${widget.usageUnit}'
                         : 'N/A',
                     color: const Color(0xFF2196F3),
                   ),
@@ -3676,7 +3703,7 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                     icon: Icons.shopping_cart,
                     label: 'Purchased',
                     value: quantityPurchased != null
-                        ? '${quantityPurchased.toStringAsFixed(1)} ${widget.usageUnit}'
+                        ? '${quantityPurchased % 1 == 0 ? quantityPurchased.toInt() : quantityPurchased.toStringAsFixed(2)} ${widget.usageUnit}'
                         : 'N/A',
                     color: const Color(0xFF4CAF50),
                   ),
@@ -3691,7 +3718,7 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                     icon: Icons.local_fire_department,
                     label: 'Consumed',
                     value: displayConsumed != null
-                        ? '${displayConsumed.toStringAsFixed(1)} ${widget.usageUnit}'
+                        ? '${displayConsumed % 1 == 0 ? displayConsumed.toInt() : displayConsumed.toStringAsFixed(2)} ${widget.usageUnit}'
                         : 'N/A',
                     color: const Color(0xFFE91E63),
                   ),
@@ -3702,7 +3729,7 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                     icon: Icons.inventory_2,
                     label: 'Remaining',
                     value: displayRemaining != null
-                        ? '${displayRemaining.toStringAsFixed(1)} ${widget.usageUnit}'
+                        ? '${displayRemaining % 1 == 0 ? displayRemaining.toInt() : displayRemaining.toStringAsFixed(2)} ${widget.usageUnit}'
                         : 'N/A',
                     color: const Color(0xFF9C27B0),
                   ),
@@ -3722,7 +3749,8 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline, size: 16, color: Color(0xFF4CAF50)),
+                    const Icon(Icons.info_outline,
+                        size: 16, color: Color(0xFF4CAF50)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
