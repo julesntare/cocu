@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/item.dart';
 import '../services/database_service.dart';
 import '../widgets/monthly_summary_widget.dart';
@@ -161,8 +161,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('is_authenticated', false);
+    const storage = FlutterSecureStorage();
+    await storage.write(key: 'is_authenticated', value: 'false');
     if (mounted) {
       Navigator.of(context).pushReplacementNamed('/');
     }

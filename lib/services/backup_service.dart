@@ -1,6 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
+import 'package:encrypt/encrypt.dart' as enc;
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
@@ -26,6 +30,42 @@ class BackupService {
   static const String frequencyWeekly = 'weekly';
   static const String frequencyMonthly = 'monthly';
 
+  static const _storage = FlutterSecureStorage();
+
+  /// Derive a 32-byte AES key from the stored DB encryption key.
+  Future<enc.Key> _getBackupKey() async {
+    final hexKey = await _storage.read(key: 'db_encryption_key');
+    if (hexKey == null) throw Exception('Encryption key not found');
+    // Convert hex string to bytes (each pair of hex chars = 1 byte)
+    final bytes = Uint8List(32);
+    for (int i = 0; i < 32; i++) {
+      bytes[i] = int.parse(hexKey.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return enc.Key(bytes);
+  }
+
+  /// Encrypt [plaintext] with AES-256-CBC and return "base64(iv):base64(ciphertext)".
+  Future<String> _encrypt(String plaintext) async {
+    final key = await _getBackupKey();
+    final ivBytes = Uint8List(16);
+    final rng = Random.secure();
+    for (int i = 0; i < 16; i++) ivBytes[i] = rng.nextInt(256);
+    final iv = enc.IV(ivBytes);
+    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
+    final encrypted = encrypter.encrypt(plaintext, iv: iv);
+    return '${base64.encode(ivBytes)}:${encrypted.base64}';
+  }
+
+  /// Decrypt a string produced by [_encrypt].
+  Future<String> _decrypt(String payload) async {
+    final parts = payload.split(':');
+    if (parts.length != 2) throw const FormatException('Invalid backup format');
+    final key = await _getBackupKey();
+    final iv = enc.IV(base64.decode(parts[0]));
+    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
+    return encrypter.decrypt64(parts[1], iv: iv);
+  }
+
   /// Export all data to JSON format
   Future<Map<String, dynamic>> exportToJson() async {
     final items = await _dbService.getAllItems();
@@ -47,10 +87,22 @@ class BackupService {
     };
   }
 
+  /// Validate that [map] contains [required] string keys with non-null values.
+  void _requireFields(Map<dynamic, dynamic> map, List<String> required, String context) {
+    for (final key in required) {
+      if (!map.containsKey(key) || map[key] == null) {
+        throw FormatException('Invalid backup: missing "$key" in $context');
+      }
+    }
+  }
+
   /// Import data from JSON format
   Future<void> importFromJson(Map<String, dynamic> data) async {
     if (data['version'] == null) {
-      throw Exception('Invalid backup file: missing version');
+      throw const FormatException('Invalid backup file: missing version');
+    }
+    if (data['version'] is! String) {
+      throw const FormatException('Invalid backup file: version must be a string');
     }
 
     // Clear existing data
@@ -58,29 +110,48 @@ class BackupService {
 
     // Import items first (parent entities)
     if (data['items'] != null) {
-      for (var itemMap in data['items']) {
-        final item = Item.fromMap(itemMap);
-        // Insert item without creating initial price history
-        final db = await _dbService.database;
-        await db.insert('items', item.toMap());
+      if (data['items'] is! List) throw const FormatException('Invalid backup: items must be a list');
+      for (final raw in data['items'] as List) {
+        if (raw is! Map) continue;
+        try {
+          _requireFields(raw, ['name', 'current_price', 'created_at', 'updated_at'], 'items');
+          final item = Item.fromMap(Map<String, dynamic>.from(raw));
+          final db = await _dbService.database;
+          await db.insert('items', item.toMap());
+        } catch (_) {
+          // Skip malformed entries rather than aborting the whole restore
+        }
       }
     }
 
     // Import sub-items second (child entities of items)
     if (data['sub_items'] != null) {
-      for (var subItemMap in data['sub_items']) {
-        final subItem = SubItem.fromMap(subItemMap);
-        // Insert sub-item without creating initial price history
-        final db = await _dbService.database;
-        await db.insert('sub_items', subItem.toMap());
+      if (data['sub_items'] is! List) throw const FormatException('Invalid backup: sub_items must be a list');
+      for (final raw in data['sub_items'] as List) {
+        if (raw is! Map) continue;
+        try {
+          _requireFields(raw, ['item_id', 'name', 'current_price', 'created_at', 'updated_at'], 'sub_items');
+          final subItem = SubItem.fromMap(Map<String, dynamic>.from(raw));
+          final db = await _dbService.database;
+          await db.insert('sub_items', subItem.toMap());
+        } catch (_) {
+          // Skip malformed entries
+        }
       }
     }
 
     // Import price history last (references both items and sub-items)
     if (data['price_history'] != null) {
-      for (var phMap in data['price_history']) {
-        final db = await _dbService.database;
-        await db.insert('price_history', phMap);
+      if (data['price_history'] is! List) throw const FormatException('Invalid backup: price_history must be a list');
+      for (final raw in data['price_history'] as List) {
+        if (raw is! Map) continue;
+        try {
+          _requireFields(raw, ['item_id', 'price', 'recorded_at', 'entry_type'], 'price_history');
+          final db = await _dbService.database;
+          await db.insert('price_history', Map<String, dynamic>.from(raw));
+        } catch (_) {
+          // Skip malformed entries
+        }
       }
     }
   }
@@ -122,9 +193,10 @@ class BackupService {
         await directory.create(recursive: true);
       }
 
-      // Write file
+      // Encrypt and write file
+      final encryptedContent = await _encrypt(jsonString);
       final file = File('${directory.path}/$filename');
-      await file.writeAsString(jsonString);
+      await file.writeAsString(encryptedContent);
 
       // Update last backup date
       await _updateLastBackupDate();
@@ -155,8 +227,9 @@ class BackupService {
       );
 
       if (selectedDirectory != null) {
+        final encryptedContent = await _encrypt(jsonString);
         final file = File('$selectedDirectory/$filename');
-        await file.writeAsString(jsonString);
+        await file.writeAsString(encryptedContent);
 
         // Update last backup date
         await _updateLastBackupDate();
@@ -181,9 +254,17 @@ class BackupService {
 
       if (result != null && result.files.single.path != null) {
         final file = File(result.files.single.path!);
-        final jsonString = await file.readAsString();
-        final data = json.decode(jsonString) as Map<String, dynamic>;
+        final rawContent = await file.readAsString();
 
+        // Try decrypting first (new format); fall back to plain JSON (old format)
+        String jsonString;
+        try {
+          jsonString = await _decrypt(rawContent);
+        } catch (_) {
+          jsonString = rawContent;
+        }
+
+        final data = json.decode(jsonString) as Map<String, dynamic>;
         await importFromJson(data);
       }
     } catch (e) {
@@ -279,7 +360,7 @@ class BackupService {
       }
     } catch (e) {
       // Silent fail for auto-backup
-      print('Auto-backup failed: $e');
+      if (kDebugMode) debugPrint('Auto-backup failed: $e');
     }
   }
 
@@ -326,7 +407,7 @@ class BackupService {
         }
       }
     } catch (e) {
-      print('Cleanup failed: $e');
+      if (kDebugMode) debugPrint('Cleanup failed: $e');
     }
   }
 }

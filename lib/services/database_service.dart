@@ -1,4 +1,8 @@
-import 'package:sqflite/sqflite.dart';
+import 'dart:io';
+import 'dart:math';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sqflite_sqlcipher/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/item.dart';
 import '../models/price_history.dart';
@@ -17,13 +21,37 @@ class DatabaseService {
   }
 
   Future<Database> initDatabase() async {
-    String path = join(await getDatabasesPath(), 'cocu.db');
-    return await openDatabase(
-      path,
-      version: 9, // Add track_usage to sub_items
-      onCreate: _createDatabase,
-      onUpgrade: _upgradeDatabase,
-    );
+    const storage = FlutterSecureStorage();
+    String? dbKey = await storage.read(key: 'db_encryption_key');
+    if (dbKey == null) {
+      final random = Random.secure();
+      final bytes = List<int>.generate(32, (_) => random.nextInt(256));
+      dbKey = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+      await storage.write(key: 'db_encryption_key', value: dbKey);
+    }
+
+    final path = join(await getDatabasesPath(), 'cocu.db');
+    try {
+      _database = await openDatabase(
+        path,
+        password: dbKey,
+        version: 9,
+        onCreate: _createDatabase,
+        onUpgrade: _upgradeDatabase,
+      );
+    } catch (_) {
+      // Existing unencrypted database — delete it and create a fresh encrypted one.
+      final dbFile = File(path);
+      if (await dbFile.exists()) await dbFile.delete();
+      _database = await openDatabase(
+        path,
+        password: dbKey,
+        version: 9,
+        onCreate: _createDatabase,
+        onUpgrade: _upgradeDatabase,
+      );
+    }
+    return _database!;
   }
 
   Future<void> _createDatabase(Database db, int version) async {
@@ -119,7 +147,7 @@ class DatabaseService {
           WHERE created_at IS NULL
         ''');
       } catch (e) {
-        print('Error upgrading database to version 3: $e');
+        if (kDebugMode) debugPrint('Error upgrading database to version 3: $e');
       }
     }
 
@@ -150,7 +178,7 @@ class DatabaseService {
         await db
             .execute('ALTER TABLE price_history_new RENAME TO price_history');
       } catch (e) {
-        print('Error upgrading database to version 4: $e');
+        if (kDebugMode) debugPrint('Error upgrading database to version 4: $e');
       }
     }
 
@@ -160,7 +188,7 @@ class DatabaseService {
         await db
             .execute('ALTER TABLE price_history ADD COLUMN finished_at TEXT');
       } catch (e) {
-        print('Error upgrading database to version 5: $e');
+        if (kDebugMode) debugPrint('Error upgrading database to version 5: $e');
       }
     }
 
@@ -184,7 +212,7 @@ class DatabaseService {
         await db.execute(
             'ALTER TABLE price_history ADD COLUMN sub_item_id INTEGER');
       } catch (e) {
-        print('Error upgrading database to version 6: $e');
+        if (kDebugMode) debugPrint('Error upgrading database to version 6: $e');
       }
     }
 
@@ -194,7 +222,7 @@ class DatabaseService {
         await db.execute(
             'ALTER TABLE price_history ADD COLUMN description TEXT');
       } catch (e) {
-        print('Error upgrading database to version 7: $e');
+        if (kDebugMode) debugPrint('Error upgrading database to version 7: $e');
       }
     }
 
@@ -211,7 +239,7 @@ class DatabaseService {
         await db.execute(
             'ALTER TABLE price_history ADD COLUMN quantity_consumed REAL');
       } catch (e) {
-        print('Error upgrading database to version 8: $e');
+        if (kDebugMode) debugPrint('Error upgrading database to version 8: $e');
       }
     }
 
@@ -222,7 +250,7 @@ class DatabaseService {
             'ALTER TABLE sub_items ADD COLUMN track_usage INTEGER DEFAULT 0');
         await db.execute('ALTER TABLE sub_items ADD COLUMN usage_unit TEXT');
       } catch (e) {
-        print('Error upgrading database to version 9: $e');
+        if (kDebugMode) debugPrint('Error upgrading database to version 9: $e');
       }
     }
   }

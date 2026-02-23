@@ -20,8 +20,8 @@ class CurrencyFormatter {
   /// Parses a string input to a double (removes commas and handles Rwf prefix)
   static double parsePrice(String priceText) {
     // Remove Rwf prefix and commas, then parse
-    String cleanText =
+    final cleanText =
         priceText.replaceAll('Rwf', '').replaceAll(',', '').trim();
-    return double.parse(cleanText);
+    return double.tryParse(cleanText) ?? 0.0;
   }
 }
