@@ -352,9 +352,67 @@ class DatabaseService {
     return null;
   }
 
-  // Finish an ongoing purchase by setting remaining to 0 and finishedAt
-  Future<int> finishOngoingPurchase(int id, DateTime finishedAt) async {
+  // Finish an ongoing purchase by setting finishedAt.
+  // - If quantity_remaining or quantity_consumed is already set (manual edit),
+  //   preserve those values and only update finished_at.
+  // - If no quantity data exists but quantity_purchased is set,
+  //   estimate remaining using historical avg daily usage pattern.
+  // - Otherwise, fall back to setting remaining = 0.
+  Future<int> finishOngoingPurchase(
+    int id,
+    DateTime finishedAt, {
+    int? itemId,
+    int? subItemId,
+  }) async {
     final db = await database;
+
+    // Fetch the current purchase record
+    final maps = await db.query(
+      'price_history',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (maps.isEmpty) return 0;
+
+    final purchase = PriceHistory.fromMap(maps.first);
+
+    // Case A: User already has manual remaining/consumed — only update finishedAt
+    if (purchase.quantityRemaining != null || purchase.quantityConsumed != null) {
+      return await db.update(
+        'price_history',
+        {'finished_at': finishedAt.toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+    }
+
+    // Case B: Has quantityPurchased — estimate remaining via historical pattern
+    if (purchase.quantityPurchased != null && itemId != null) {
+      final historicalAvg = await _computeHistoricalAvgDailyUsage(
+        itemId,
+        subItemId: subItemId,
+        excludeId: id,
+      );
+
+      if (historicalAvg != null && historicalAvg > 0) {
+        final days = _daysBetween(purchase.recordedAt, finishedAt);
+        final estimatedConsumed = historicalAvg * days;
+        final estimatedRemaining = purchase.quantityPurchased! - estimatedConsumed;
+
+        return await db.update(
+          'price_history',
+          {
+            'quantity_remaining': estimatedRemaining < 0 ? 0.0 : estimatedRemaining,
+            'finished_at': finishedAt.toIso8601String(),
+          },
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
+    }
+
+    // Case C: No quantity data or no historical pattern — fall back to remaining = 0
     return await db.update(
       'price_history',
       {
@@ -715,6 +773,72 @@ class DatabaseService {
     return days > 0 ? days : 1; // At least 1 day
   }
 
+  // Returns historical average daily usage from all COMPLETED purchase cycles
+  // for [itemId] (and optionally [subItemId]), excluding the record [excludeId]
+  // (the one currently being closed, which is not yet completed).
+  // Returns null if there is no usable historical data.
+  Future<double?> _computeHistoricalAvgDailyUsage(
+    int itemId, {
+    int? subItemId,
+    int? excludeId,
+  }) async {
+    final db = await database;
+
+    String whereClause;
+    List<dynamic> whereArgs;
+
+    if (subItemId != null) {
+      whereClause =
+          'item_id = ? AND sub_item_id = ? AND entry_type = ? AND finished_at IS NOT NULL';
+      whereArgs = [itemId, subItemId, 'manual'];
+    } else {
+      whereClause =
+          'item_id = ? AND sub_item_id IS NULL AND entry_type = ? AND finished_at IS NOT NULL';
+      whereArgs = [itemId, 'manual'];
+    }
+
+    final maps = await db.query(
+      'price_history',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'recorded_at DESC',
+    );
+
+    double totalConsumed = 0.0;
+    int totalDays = 0;
+    double? defaultQtyPurchased;
+
+    // Find most recent quantityPurchased to use as fallback for entries missing it
+    for (final map in maps) {
+      final entry = PriceHistory.fromMap(map);
+      if (entry.id == excludeId) continue;
+      if (entry.quantityPurchased != null) {
+        defaultQtyPurchased = entry.quantityPurchased;
+        break;
+      }
+    }
+
+    for (final map in maps) {
+      final entry = PriceHistory.fromMap(map);
+      if (entry.id == excludeId) continue;
+
+      final qtyPurchased = entry.quantityPurchased ?? defaultQtyPurchased;
+      final qtyRemaining = entry.quantityRemaining ?? 0.0;
+      final finishedAt = entry.finishedAt;
+
+      if (qtyPurchased != null && finishedAt != null) {
+        final days = _daysBetween(entry.recordedAt, finishedAt);
+        final consumed = qtyPurchased - qtyRemaining;
+        if (consumed > 0 && days > 0) {
+          totalConsumed += consumed;
+          totalDays += days;
+        }
+      }
+    }
+
+    return totalDays > 0 ? totalConsumed / totalDays : null;
+  }
+
   // Get all purchase entries for an item with usage tracking enabled
   // Each manual price entry is a purchase period
   // Uses recordedAt (purchase date) and finishedAt (end date) from the entry
@@ -850,8 +974,12 @@ class DatabaseService {
             avgDailyUsage = consumed / daysTracked;
           }
         }
-        // If no actual data but we have historical pattern, use it to estimate
-        else if (quantityPurchased != null && historicalAvgDailyUsage != null && daysTracked > 0) {
+        // If daily usage still unknown (consumed == 0 or no remaining data),
+        // fall back to historical pattern to estimate current consumption
+        if (avgDailyUsage == null &&
+            quantityPurchased != null &&
+            historicalAvgDailyUsage != null &&
+            daysTracked > 0) {
           usedHistoricalPattern = true;
           avgDailyUsage = historicalAvgDailyUsage;
           consumed = historicalAvgDailyUsage * daysTracked;
@@ -859,7 +987,10 @@ class DatabaseService {
           if (consumed > quantityPurchased) {
             consumed = quantityPurchased;
           }
-          estimatedRemaining = quantityPurchased - consumed;
+          // Estimate current remaining from the purchase-time remaining
+          // (or from quantityPurchased if no remaining was recorded)
+          final startingRemaining = quantityRemaining ?? quantityPurchased;
+          estimatedRemaining = startingRemaining - consumed;
           if (estimatedRemaining < 0) estimatedRemaining = 0;
         }
       }
@@ -869,7 +1000,13 @@ class DatabaseService {
         'purchaseDate': purchaseDate,
         'endDate': effectiveEndDate,
         'quantityPurchased': quantityPurchased,
-        'quantityRemaining': usedFallback && isComplete ? 0.0 : (quantityRemaining ?? estimatedRemaining),
+        // For ongoing purchases using historical pattern, show estimated current
+        // remaining rather than the purchase-time remaining value
+        'quantityRemaining': usedFallback && isComplete
+            ? 0.0
+            : (usedHistoricalPattern && !isComplete
+                ? estimatedRemaining
+                : (quantityRemaining ?? estimatedRemaining)),
         'consumed': consumed,
         'daysTracked': daysTracked,
         'avgDailyUsage': avgDailyUsage,

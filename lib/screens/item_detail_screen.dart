@@ -631,7 +631,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
                 .getMostRecentOngoingPurchase(_currentItem!.id!);
             if (ongoingPurchase != null) {
               await _databaseService.finishOngoingPurchase(
-                  ongoingPurchase.id!, recordedAt);
+                ongoingPurchase.id!,
+                recordedAt,
+                itemId: _currentItem!.id!,
+              );
             }
           }
 
@@ -671,7 +674,11 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
             );
             if (ongoingPurchase != null) {
               await _databaseService.finishOngoingPurchase(
-                  ongoingPurchase.id!, recordedAt);
+                ongoingPurchase.id!,
+                recordedAt,
+                itemId: _currentItem!.id!,
+                subItemId: subItem.id!,
+              );
             }
           }
 
@@ -3658,7 +3665,7 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      '$daysTracked days',
+                      '$daysTracked ${daysTracked == 1 ? 'day' : 'days'}',
                       style: const TextStyle(
                         fontSize: 11,
                         color: Colors.white,
