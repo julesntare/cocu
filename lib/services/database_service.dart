@@ -1049,6 +1049,56 @@ class DatabaseService {
     return purchases;
   }
 
+  /// Returns how far through the average purchase cycle the item currently is,
+  /// as a fraction (e.g. 0.9 = 90%, 1.2 = 120% / overdue). Returns null if
+  /// fewer than 2 manual purchase entries exist (cycle length cannot be determined).
+  Future<double?> getPurchaseCycleProgress(int itemId,
+      {int? subItemId}) async {
+    final db = await database;
+
+    String whereClause;
+    List<dynamic> whereArgs;
+
+    if (subItemId != null) {
+      whereClause = 'item_id = ? AND sub_item_id = ? AND entry_type = ?';
+      whereArgs = [itemId, subItemId, 'manual'];
+    } else {
+      whereClause = 'item_id = ? AND sub_item_id IS NULL AND entry_type = ?';
+      whereArgs = [itemId, 'manual'];
+    }
+
+    final maps = await db.query(
+      'price_history',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'recorded_at ASC',
+    );
+
+    if (maps.length < 2) return null;
+
+    final entries = maps.map((m) => PriceHistory.fromMap(m)).toList();
+
+    // Average the gaps between consecutive purchase dates
+    int totalCycleDays = 0;
+    for (int i = 1; i < entries.length; i++) {
+      totalCycleDays +=
+          _daysBetween(entries[i - 1].recordedAt, entries[i].recordedAt);
+    }
+    final avgCycleDays = totalCycleDays / (entries.length - 1);
+
+    // Days elapsed since the most recent purchase
+    final lastPurchaseDate = DateTime(
+      entries.last.recordedAt.year,
+      entries.last.recordedAt.month,
+      entries.last.recordedAt.day,
+    );
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+    final daysElapsed = todayDate.difference(lastPurchaseDate).inDays;
+
+    return daysElapsed / avgCycleDays;
+  }
+
   // Clear all data (for backup restore)
   Future<void> clearAllData() async {
     final db = await database;

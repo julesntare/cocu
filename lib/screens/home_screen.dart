@@ -8,7 +8,7 @@ import 'add_item_screen.dart';
 import 'item_detail_screen.dart';
 import 'settings_screen.dart';
 
-enum ItemFilter { all, active, finished }
+enum ItemFilter { all, active, dueSoon, overdue, finished }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -24,6 +24,8 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Item> _filteredItems = [];
   Map<int, bool> _hasActiveRecordMap =
       {}; // Map of item ID to whether it has active ongoing record
+  Map<int, double?> _cycleProgressMap =
+      {}; // Map of item ID to purchase cycle progress (0.0–1.0+)
   bool _isLoading = true;
   int _summaryRefreshKey = 0;
   ItemFilter _currentFilter = ItemFilter.all;
@@ -61,6 +63,20 @@ class _HomeScreenState extends State<HomeScreen> {
               .where((item) => _hasActiveRecordMap[item.id] == true)
               .toList();
           break;
+        case ItemFilter.dueSoon:
+          filtered = filtered.where((item) {
+            final isActive = _hasActiveRecordMap[item.id] == true;
+            final progress = _cycleProgressMap[item.id];
+            return isActive && progress != null && progress >= 0.9 && progress < 1.0;
+          }).toList();
+          break;
+        case ItemFilter.overdue:
+          filtered = filtered.where((item) {
+            final isActive = _hasActiveRecordMap[item.id] == true;
+            final progress = _cycleProgressMap[item.id];
+            return isActive && progress != null && progress >= 1.0;
+          }).toList();
+          break;
         case ItemFilter.finished:
           filtered = filtered
               .where((item) => _hasActiveRecordMap[item.id] != true)
@@ -94,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final items = await _databaseService.getAllItems();
 
-      // Calculate ongoing days for each item and sort by it
+      // Calculate ongoing days and cycle progress for each item
       final itemsWithOngoingDays = await Future.wait(items.map((item) async {
         final priceHistory = await _databaseService.getPriceHistory(item.id!);
         final manualEntries = priceHistory
@@ -116,10 +132,14 @@ class _HomeScreenState extends State<HomeScreen> {
           hasActiveRecord = latestEntry.finishedAt == null;
         }
 
+        final cycleProgress =
+            await _databaseService.getPurchaseCycleProgress(item.id!);
+
         return {
           'item': item,
           'ongoingDays': ongoingDays,
           'hasActiveRecord': hasActiveRecord,
+          'cycleProgress': cycleProgress,
         };
       }));
 
@@ -130,21 +150,24 @@ class _HomeScreenState extends State<HomeScreen> {
       final sortedItems =
           itemsWithOngoingDays.map((e) => e['item'] as Item).toList();
 
-      // Build the ongoing days map and active record map
+      // Build the ongoing days map, active record map, and cycle progress map
       final ongoingDaysMap = <int, int>{};
       final hasActiveRecordMap = <int, bool>{};
+      final cycleProgressMap = <int, double?>{};
       for (var itemData in itemsWithOngoingDays) {
         final item = itemData['item'] as Item;
         final ongoingDays = itemData['ongoingDays'] as int;
         final hasActiveRecord = itemData['hasActiveRecord'] as bool;
         ongoingDaysMap[item.id!] = ongoingDays;
         hasActiveRecordMap[item.id!] = hasActiveRecord;
+        cycleProgressMap[item.id!] = itemData['cycleProgress'] as double?;
       }
 
       setState(() {
         _items = sortedItems;
         _filteredItems = sortedItems;
         _hasActiveRecordMap = hasActiveRecordMap;
+        _cycleProgressMap = cycleProgressMap;
         _isLoading = false;
         _summaryRefreshKey++; // Refresh the summary widget
       });
@@ -195,6 +218,24 @@ class _HomeScreenState extends State<HomeScreen> {
     // Green gradient for fresh items
     return const LinearGradient(
       colors: [Color(0xFF4CAF50), Color(0xFF66BB6A)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+  }
+
+  LinearGradient _getDueSoonGradient() {
+    // Amber gradient — approaching the next purchase date (90–99%)
+    return const LinearGradient(
+      colors: [Color(0xFFFF9800), Color(0xFFFFB74D)],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+  }
+
+  LinearGradient _getOverdueGradient() {
+    // Red gradient — past the expected purchase date (100%+)
+    return const LinearGradient(
+      colors: [Color(0xFFF44336), Color(0xFFEF5350)],
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
     );
@@ -334,7 +375,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           // Filter Chips
-          Padding(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
             child: Row(
               children: [
@@ -344,7 +386,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onSelected: (selected) {
                     if (selected) _changeFilter(ItemFilter.all);
                   },
-                  selectedColor: AppColors.primaryStart.withValues(alpha: 0.2),
+                  selectedColor:
+                      AppColors.primaryStart.withValues(alpha: 0.2),
                   checkmarkColor: AppColors.primaryStart,
                   labelStyle: TextStyle(
                     color: _currentFilter == ItemFilter.all
@@ -362,7 +405,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   onSelected: (selected) {
                     if (selected) _changeFilter(ItemFilter.active);
                   },
-                  selectedColor: const Color(0xFF4CAF50).withValues(alpha: 0.2),
+                  selectedColor:
+                      const Color(0xFF4CAF50).withValues(alpha: 0.2),
                   checkmarkColor: const Color(0xFF4CAF50),
                   avatar: _currentFilter == ItemFilter.active
                       ? null
@@ -387,12 +431,75 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 8),
                 FilterChip(
+                  label: const Text('Due Soon'),
+                  selected: _currentFilter == ItemFilter.dueSoon,
+                  onSelected: (selected) {
+                    if (selected) _changeFilter(ItemFilter.dueSoon);
+                  },
+                  selectedColor:
+                      const Color(0xFFFF9800).withValues(alpha: 0.2),
+                  checkmarkColor: const Color(0xFFFF9800),
+                  avatar: _currentFilter == ItemFilter.dueSoon
+                      ? null
+                      : Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Color(0xFFFF9800), Color(0xFFFFB74D)],
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                  labelStyle: TextStyle(
+                    color: _currentFilter == ItemFilter.dueSoon
+                        ? const Color(0xFFFF9800)
+                        : AppColors.textSecondary,
+                    fontWeight: _currentFilter == ItemFilter.dueSoon
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  label: const Text('Overdue'),
+                  selected: _currentFilter == ItemFilter.overdue,
+                  onSelected: (selected) {
+                    if (selected) _changeFilter(ItemFilter.overdue);
+                  },
+                  selectedColor:
+                      const Color(0xFFF44336).withValues(alpha: 0.2),
+                  checkmarkColor: const Color(0xFFF44336),
+                  avatar: _currentFilter == ItemFilter.overdue
+                      ? null
+                      : Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Color(0xFFF44336), Color(0xFFEF5350)],
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                  labelStyle: TextStyle(
+                    color: _currentFilter == ItemFilter.overdue
+                        ? const Color(0xFFF44336)
+                        : AppColors.textSecondary,
+                    fontWeight: _currentFilter == ItemFilter.overdue
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilterChip(
                   label: const Text('Finished'),
                   selected: _currentFilter == ItemFilter.finished,
                   onSelected: (selected) {
                     if (selected) _changeFilter(ItemFilter.finished);
                   },
-                  selectedColor: AppColors.textSecondary.withValues(alpha: 0.2),
+                  selectedColor:
+                      AppColors.textSecondary.withValues(alpha: 0.2),
                   checkmarkColor: AppColors.textSecondary,
                   labelStyle: TextStyle(
                     color: _currentFilter == ItemFilter.finished
@@ -467,6 +574,26 @@ class _HomeScreenState extends State<HomeScreen> {
                             itemCount: _filteredItems.length,
                             itemBuilder: (context, index) {
                               final item = _filteredItems[index];
+                              final isActive =
+                                  _hasActiveRecordMap[item.id] == true;
+                              final progress = _cycleProgressMap[item.id];
+                              final isOverdue = isActive &&
+                                  progress != null &&
+                                  progress >= 1.0;
+                              final isDueSoon = isActive &&
+                                  !isOverdue &&
+                                  progress != null &&
+                                  progress >= 0.9;
+
+                              LinearGradient? barGradient;
+                              if (isOverdue) {
+                                barGradient = _getOverdueGradient();
+                              } else if (isDueSoon) {
+                                barGradient = _getDueSoonGradient();
+                              } else if (isActive) {
+                                barGradient = _getOngoingGradient();
+                              }
+
                               return Container(
                                 margin: const EdgeInsets.only(bottom: 10),
                                 decoration: BoxDecoration(
@@ -498,14 +625,14 @@ class _HomeScreenState extends State<HomeScreen> {
                                     borderRadius: BorderRadius.circular(16),
                                     child: Row(
                                       children: [
-                                        // Left colored bar for ongoing items
-                                        if (_hasActiveRecordMap[item.id] ==
-                                            true)
+                                        // Left colored bar: green = active,
+                                        // amber = due soon (≥90%), red = overdue (≥100%)
+                                        if (barGradient != null)
                                           Container(
                                             width: 4,
                                             height: 20,
                                             decoration: BoxDecoration(
-                                              gradient: _getOngoingGradient(),
+                                              gradient: barGradient,
                                               borderRadius:
                                                   const BorderRadius.only(
                                                 topLeft: Radius.circular(16),
@@ -557,6 +684,26 @@ class _HomeScreenState extends State<HomeScreen> {
                                                     ],
                                                   ),
                                                 ),
+                                                if (isOverdue)
+                                                  const Padding(
+                                                    padding: EdgeInsets.only(
+                                                        right: 4),
+                                                    child: Icon(
+                                                      Icons.error_outline_rounded,
+                                                      size: 16,
+                                                      color: Color(0xFFF44336),
+                                                    ),
+                                                  )
+                                                else if (isDueSoon)
+                                                  const Padding(
+                                                    padding: EdgeInsets.only(
+                                                        right: 4),
+                                                    child: Icon(
+                                                      Icons.warning_amber_rounded,
+                                                      size: 16,
+                                                      color: Color(0xFFFF9800),
+                                                    ),
+                                                  ),
                                                 const Icon(
                                                   Icons.chevron_right_rounded,
                                                   color: AppColors.textLight,
