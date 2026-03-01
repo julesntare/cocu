@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../models/item.dart';
 import '../services/database_service.dart';
 import '../widgets/monthly_summary_widget.dart';
@@ -183,37 +182,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _logout() async {
-    const storage = FlutterSecureStorage();
-    await storage.write(key: 'is_authenticated', value: 'false');
-    if (mounted) {
-      Navigator.of(context).pushReplacementNamed('/');
-    }
-  }
-
-  void _showLogoutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _logout();
-            },
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
-  }
-
   LinearGradient _getOngoingGradient() {
     // Green gradient for fresh items
     return const LinearGradient(
@@ -295,9 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
             actions: [
               PopupMenuButton<String>(
                 onSelected: (value) async {
-                  if (value == 'logout') {
-                    _showLogoutDialog();
-                  } else if (value == 'settings') {
+                  if (value == 'settings') {
                     final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -318,17 +284,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         Icon(Icons.settings, size: 20),
                         SizedBox(width: 8),
                         Text('Settings & Backup'),
-                      ],
-                    ),
-                  ),
-                  const PopupMenuDivider(),
-                  const PopupMenuItem(
-                    value: 'logout',
-                    child: Row(
-                      children: [
-                        Icon(Icons.logout, size: 20),
-                        SizedBox(width: 8),
-                        Text('Logout'),
                       ],
                     ),
                   ),
