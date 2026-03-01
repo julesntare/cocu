@@ -11,6 +11,7 @@ class PriceHistory {
   final double? quantityPurchased; // Units bought (e.g., 100 kWh)
   final double? quantityRemaining; // Units left when recording
   final double? quantityConsumed; // Units used (alternative entry method)
+  final DateTime? remainingUpdatedAt; // When quantity_remaining was last manually set
 
   PriceHistory({
     this.id,
@@ -25,6 +26,7 @@ class PriceHistory {
     this.quantityPurchased,
     this.quantityRemaining,
     this.quantityConsumed,
+    this.remainingUpdatedAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -42,6 +44,7 @@ class PriceHistory {
       'quantity_purchased': quantityPurchased,
       'quantity_remaining': quantityRemaining,
       'quantity_consumed': quantityConsumed,
+      'remaining_updated_at': remainingUpdatedAt?.toIso8601String(),
     };
   }
 
@@ -67,6 +70,9 @@ class PriceHistory {
       quantityConsumed: map['quantity_consumed'] != null
           ? (map['quantity_consumed'] as num).toDouble()
           : null,
+      remainingUpdatedAt: map['remaining_updated_at'] != null
+          ? DateTime.parse(map['remaining_updated_at'])
+          : null,
     );
   }
 
@@ -83,6 +89,7 @@ class PriceHistory {
     double? quantityPurchased,
     double? quantityRemaining,
     double? quantityConsumed,
+    DateTime? remainingUpdatedAt,
     bool clearQuantityRemaining = false,
     bool clearQuantityConsumed = false,
   }) {
@@ -99,6 +106,7 @@ class PriceHistory {
       quantityPurchased: quantityPurchased ?? this.quantityPurchased,
       quantityRemaining: clearQuantityRemaining ? null : (quantityRemaining ?? this.quantityRemaining),
       quantityConsumed: clearQuantityConsumed ? null : (quantityConsumed ?? this.quantityConsumed),
+      remainingUpdatedAt: clearQuantityRemaining ? null : (remainingUpdatedAt ?? this.remainingUpdatedAt),
     );
   }
 }

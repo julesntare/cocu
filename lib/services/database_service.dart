@@ -35,7 +35,7 @@ class DatabaseService {
       _database = await openDatabase(
         path,
         password: dbKey,
-        version: 9,
+        version: 10,
         onCreate: _createDatabase,
         onUpgrade: _upgradeDatabase,
       );
@@ -46,7 +46,7 @@ class DatabaseService {
       _database = await openDatabase(
         path,
         password: dbKey,
-        version: 9,
+        version: 10,
         onCreate: _createDatabase,
         onUpgrade: _upgradeDatabase,
       );
@@ -96,6 +96,7 @@ class DatabaseService {
         quantity_purchased REAL,
         quantity_remaining REAL,
         quantity_consumed REAL,
+        remaining_updated_at TEXT,
         FOREIGN KEY (item_id) REFERENCES items (id) ON DELETE CASCADE,
         FOREIGN KEY (sub_item_id) REFERENCES sub_items (id) ON DELETE CASCADE
       )
@@ -253,6 +254,16 @@ class DatabaseService {
         if (kDebugMode) debugPrint('Error upgrading database to version 9: $e');
       }
     }
+
+    if (oldVersion < 10) {
+      // Add remaining_updated_at to track when quantity_remaining was last manually set
+      try {
+        await db.execute(
+            'ALTER TABLE price_history ADD COLUMN remaining_updated_at TEXT');
+      } catch (e) {
+        if (kDebugMode) debugPrint('Error upgrading database to version 10: $e');
+      }
+    }
   }
 
   // Item CRUD operations
@@ -335,9 +346,14 @@ class DatabaseService {
 
   Future<int> updatePriceHistory(PriceHistory priceHistory) async {
     final db = await database;
+    final map = priceHistory.toMap();
+    // Stamp remaining_updated_at whenever quantity_remaining is set or cleared
+    map['remaining_updated_at'] = priceHistory.quantityRemaining != null
+        ? DateTime.now().toIso8601String()
+        : null;
     return await db.update(
       'price_history',
-      priceHistory.toMap(),
+      map,
       where: 'id = ?',
       whereArgs: [priceHistory.id],
     );
@@ -997,9 +1013,46 @@ class DatabaseService {
 
         // For ongoing, try actual remaining first
         if (quantityPurchased != null && quantityRemaining != null) {
-          consumed = quantityPurchased - quantityRemaining;
-          if (daysTracked > 0 && consumed > 0) {
-            avgDailyUsage = consumed / daysTracked;
+          final remainingUpdatedAt = entry.remainingUpdatedAt;
+          if (remainingUpdatedAt != null &&
+              remainingUpdatedAt.isAfter(purchaseDate)) {
+            // User manually updated remaining after the purchase date — use as
+            // a checkpoint. Derive daily rate up to that point, then project
+            // consumption forward from there to get a current estimate.
+            final daysToCheckpoint =
+                _daysBetween(purchaseDate, remainingUpdatedAt);
+            final consumedToCheckpoint = quantityPurchased - quantityRemaining;
+
+            if (daysToCheckpoint > 0 && consumedToCheckpoint > 0) {
+              final rateAtCheckpoint = consumedToCheckpoint / daysToCheckpoint;
+              final checkpointDay = DateTime(remainingUpdatedAt.year,
+                  remainingUpdatedAt.month, remainingUpdatedAt.day);
+              final nowDay = DateTime.now();
+              final todayDay =
+                  DateTime(nowDay.year, nowDay.month, nowDay.day);
+              final daysSinceCheckpoint =
+                  todayDay.difference(checkpointDay).inDays;
+              estimatedRemaining =
+                  quantityRemaining - (rateAtCheckpoint * daysSinceCheckpoint);
+              if (estimatedRemaining < 0) estimatedRemaining = 0;
+              consumed = quantityPurchased - estimatedRemaining;
+              if (daysTracked > 0 && consumed > 0) {
+                avgDailyUsage = consumed / daysTracked;
+              }
+              usedHistoricalPattern = true; // display estimated remaining
+            } else {
+              // Same-day edit or zero consumption recorded: simple calculation
+              consumed = quantityPurchased - quantityRemaining;
+              if (daysTracked > 0 && consumed > 0) {
+                avgDailyUsage = consumed / daysTracked;
+              }
+            }
+          } else {
+            // No post-purchase checkpoint: original behaviour
+            consumed = quantityPurchased - quantityRemaining;
+            if (daysTracked > 0 && consumed > 0) {
+              avgDailyUsage = consumed / daysTracked;
+            }
           }
         }
         // If daily usage still unknown (consumed == 0 or no remaining data),
