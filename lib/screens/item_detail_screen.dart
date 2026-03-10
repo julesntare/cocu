@@ -223,6 +223,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
         ? _currentItem!.usageUnit
         : _subItems[_selectedTabIndex].usageUnit;
 
+    // Fetch ongoing purchase for carry-over feature
+    PriceHistory? ongoingPurchase;
+    if (trackUsage) {
+      final subItemId =
+          _subItems.isEmpty ? null : _subItems[_selectedTabIndex].id;
+      ongoingPurchase = await _databaseService.getMostRecentOngoingPurchase(
+        _currentItem!.id!,
+        subItemId: subItemId,
+      );
+    }
+
     // Initialize with current price as default value
     final priceController = TextEditingController(
       text: NumberFormat('#,###').format(currentPrice.round()),
@@ -230,8 +241,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
     final descriptionController = TextEditingController();
     final quantityPurchasedController = TextEditingController();
     final quantityValueController = TextEditingController();
+    final carryOverController = TextEditingController(
+      text: ongoingPurchase?.quantityRemaining != null
+          ? (ongoingPurchase!.quantityRemaining! ==
+                  ongoingPurchase.quantityRemaining!.truncateToDouble()
+              ? ongoingPurchase.quantityRemaining!.toInt().toString()
+              : ongoingPurchase.quantityRemaining!.toString())
+          : '',
+    );
     DateTime selectedDate = DateTime.now();
     bool recordRemaining = true; // true = remaining, false = consumed
+    bool carryOverEnabled = false;
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -339,6 +359,80 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
                       FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*')),
                     ],
                   ),
+                  // Carry-over from previous purchase
+                  if (ongoingPurchase != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFFFCC80)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: carryOverEnabled,
+                                activeColor: const Color(0xFFFF8C00),
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                onChanged: (val) {
+                                  setState(() {
+                                    carryOverEnabled = val ?? false;
+                                  });
+                                },
+                              ),
+                              Expanded(
+                                child: Text(
+                                  ongoingPurchase.quantityRemaining != null
+                                      ? 'Carry over remaining: ${carryOverController.text} ${usageUnit ?? 'units'}'
+                                      : 'Carry over remaining quantity',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (carryOverEnabled) ...[
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: carryOverController,
+                              decoration: InputDecoration(
+                                labelText: 'Quantity to carry over',
+                                suffixText: usageUnit ?? 'units',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  borderSide: const BorderSide(
+                                      color: Color(0xFFFF8C00), width: 2),
+                                ),
+                                prefixIcon: const Icon(
+                                    Icons.transfer_within_a_station,
+                                    color: Color(0xFFFF8C00)),
+                                filled: true,
+                                fillColor: Colors.white,
+                                hintText: 'e.g., 20',
+                              ),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d*\.?\d*')),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   // Toggle between remaining and consumed
                   Container(
@@ -572,6 +666,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
                           quantityPurchasedController.text.trim(),
                       'quantityValue': quantityValueController.text.trim(),
                       'recordRemaining': recordRemaining,
+                      'carryOverEnabled': carryOverEnabled,
+                      'carryOverAmount': carryOverController.text.trim(),
                     });
                   }
                 },
@@ -618,6 +714,17 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
               } else {
                 quantityConsumed = value;
               }
+            }
+          }
+
+          // Apply carry-over from previous purchase
+          final carryOverEnabled =
+              result['carryOverEnabled'] as bool? ?? false;
+          if (carryOverEnabled) {
+            final carryOverText = result['carryOverAmount'] as String?;
+            final carryOverAmt = double.tryParse(carryOverText ?? '');
+            if (carryOverAmt != null && carryOverAmt > 0) {
+              quantityPurchased = (quantityPurchased ?? 0) + carryOverAmt;
             }
           }
         }

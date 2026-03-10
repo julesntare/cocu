@@ -814,7 +814,7 @@ class DatabaseService {
     final startDate = DateTime(start.year, start.month, start.day);
     final endDate = DateTime(end.year, end.month, end.day);
     final days = endDate.difference(startDate).inDays;
-    return days > 0 ? days : 1; // At least 1 day
+    return days < 0 ? 0 : days;
   }
 
   // Returns historical average daily usage from all COMPLETED purchase cycles
