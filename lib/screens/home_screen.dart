@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import 'add_item_screen.dart';
 import 'item_detail_screen.dart';
 import 'settings_screen.dart';
+import 'upcoming_purchases_screen.dart';
 
 enum ItemFilter { all, active, dueSoon, overdue, finished, priceOnly }
 
@@ -287,9 +288,27 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (result == true) {
                       _loadData();
                     }
+                  } else if (value == 'upcoming') {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            const UpcomingPurchasesScreen(),
+                      ),
+                    );
                   }
                 },
                 itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'upcoming',
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_month_outlined, size: 20),
+                        SizedBox(width: 8),
+                        Text('Upcoming Purchases'),
+                      ],
+                    ),
+                  ),
                   const PopupMenuItem(
                     value: 'settings',
                     child: Row(
