@@ -23,6 +23,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
 
   bool _isLoading = false;
   DateTime? _selectedDate;
+  bool _isPriceOnly = false;
   bool _trackUsage = false;
   String? _selectedUnit;
   bool _useCustomUnit = false;
@@ -47,6 +48,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
           NumberFormat('#,###').format(widget.item!.currentPrice.round());
       _descriptionController.text = widget.item!.description ?? '';
       _selectedDate = widget.item!.createdAt;
+      _isPriceOnly = widget.item!.isPriceOnly;
       _trackUsage = widget.item!.trackUsage;
       if (widget.item!.usageUnit != null) {
         if (_predefinedUnits.contains(widget.item!.usageUnit)) {
@@ -105,6 +107,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
         updatedAt: now,
         trackUsage: _trackUsage,
         usageUnit: usageUnit,
+        isPriceOnly: _isPriceOnly,
       );
 
       if (widget.item == null) {
@@ -282,7 +285,46 @@ class _AddItemScreenState extends State<AddItemScreen> {
               textCapitalization: TextCapitalization.sentences,
             ),
             const SizedBox(height: 14),
-            // Usage tracking toggle
+            // Price-only toggle
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey.shade300),
+                borderRadius: BorderRadius.circular(12),
+                color: Colors.grey.shade50,
+              ),
+              child: SwitchListTile(
+                title: const Text('Price only'),
+                subtitle: Text(
+                  'Just track prices over time — no active/cycle tracking',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                ),
+                value: _isPriceOnly,
+                onChanged: (value) {
+                  setState(() {
+                    _isPriceOnly = value;
+                    if (value) {
+                      // Price-only items cannot track usage
+                      _trackUsage = false;
+                      _selectedUnit = null;
+                      _useCustomUnit = false;
+                      _customUnitController.clear();
+                    }
+                  });
+                },
+                activeTrackColor: const Color(0xFFFFE0B2),
+                activeThumbColor: const Color(0xFFFF8C00),
+                secondary: Icon(
+                  Icons.price_change,
+                  color: _isPriceOnly ? const Color(0xFFFF8C00) : Colors.grey,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            // Usage tracking toggle (hidden when price-only)
+            if (!_isPriceOnly) ...[
+            const SizedBox(height: 14),
             Container(
               decoration: BoxDecoration(
                 border: Border.all(color: Colors.grey.shade300),
@@ -317,6 +359,7 @@ class _AddItemScreenState extends State<AddItemScreen> {
                 ),
               ),
             ),
+            ],
             // Usage unit selector (shown when tracking is enabled)
             if (_trackUsage) ...[
               const SizedBox(height: 14),

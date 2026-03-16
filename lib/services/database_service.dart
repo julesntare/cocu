@@ -35,7 +35,7 @@ class DatabaseService {
       _database = await openDatabase(
         path,
         password: dbKey,
-        version: 10,
+        version: 11,
         onCreate: _createDatabase,
         onUpgrade: _upgradeDatabase,
       );
@@ -46,7 +46,7 @@ class DatabaseService {
       _database = await openDatabase(
         path,
         password: dbKey,
-        version: 10,
+        version: 11,
         onCreate: _createDatabase,
         onUpgrade: _upgradeDatabase,
       );
@@ -64,7 +64,8 @@ class DatabaseService {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         track_usage INTEGER DEFAULT 0,
-        usage_unit TEXT
+        usage_unit TEXT,
+        is_price_only INTEGER DEFAULT 0
       )
     ''');
 
@@ -264,6 +265,16 @@ class DatabaseService {
         if (kDebugMode) debugPrint('Error upgrading database to version 10: $e');
       }
     }
+
+    if (oldVersion < 11) {
+      // Add is_price_only flag to items (pure price-history tracker, no cycle tracking)
+      try {
+        await db.execute(
+            'ALTER TABLE items ADD COLUMN is_price_only INTEGER DEFAULT 0');
+      } catch (e) {
+        if (kDebugMode) debugPrint('Error upgrading database to version 11: $e');
+      }
+    }
   }
 
   // Item CRUD operations
@@ -346,14 +357,9 @@ class DatabaseService {
 
   Future<int> updatePriceHistory(PriceHistory priceHistory) async {
     final db = await database;
-    final map = priceHistory.toMap();
-    // Stamp remaining_updated_at whenever quantity_remaining is set or cleared
-    map['remaining_updated_at'] = priceHistory.quantityRemaining != null
-        ? DateTime.now().toIso8601String()
-        : null;
     return await db.update(
       'price_history',
-      map,
+      priceHistory.toMap(),
       where: 'id = ?',
       whereArgs: [priceHistory.id],
     );

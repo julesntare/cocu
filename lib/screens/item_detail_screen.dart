@@ -1078,25 +1078,27 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
                               color: Color(0xFF2C3E50),
                             ),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            history.finishedAt != null
-                                ? _getEndDateWithDaysDifference(
-                                    history.recordedAt, history.finishedAt!)
-                                : nextDate != null
-                                    ? _getEndDateWithDaysDifference(
-                                        history.recordedAt, nextDate)
-                                    : (chronologicalIndex ==
-                                            sortedHistory.length - 1
-                                        ? '(Latest Entry, ongoing by ${_calculateDaysOngoingFromLatestEntry(history.recordedAt)})'
-                                        : '(Initial Price)'),
-                            style: const TextStyle(
-                              fontStyle: FontStyle.italic,
-                              color: Colors.blue,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
+                          if (_currentItem?.isPriceOnly != true) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              history.finishedAt != null
+                                  ? _getEndDateWithDaysDifference(
+                                      history.recordedAt, history.finishedAt!)
+                                  : nextDate != null
+                                      ? _getEndDateWithDaysDifference(
+                                          history.recordedAt, nextDate)
+                                      : (chronologicalIndex ==
+                                              sortedHistory.length - 1
+                                          ? '(Latest Entry, ongoing by ${_calculateDaysOngoingFromLatestEntry(history.recordedAt)})'
+                                          : '(Initial Price)'),
+                              style: const TextStyle(
+                                fontStyle: FontStyle.italic,
+                                color: Colors.blue,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
+                          ],
                           if (history.description != null &&
                               history.description!.isNotEmpty) ...[
                             const SizedBox(height: 4),
@@ -1190,50 +1192,55 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
                 _markPriceEntryAsUnended(history);
               }
             },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'edit',
-                child: Row(
-                  children: [
-                    Icon(Icons.edit, size: 18),
-                    SizedBox(width: 8),
-                    Text('Edit'),
-                  ],
-                ),
-              ),
-              if (history.finishedAt == null)
+            itemBuilder: (context) {
+              final bool isPriceOnly = _currentItem?.isPriceOnly ?? false;
+              return [
                 const PopupMenuItem(
-                  value: 'mark_ended',
+                  value: 'edit',
                   child: Row(
                     children: [
-                      Icon(Icons.flag, size: 18, color: Colors.orange),
+                      Icon(Icons.edit, size: 18),
                       SizedBox(width: 8),
-                      Text('Mark as Ended'),
-                    ],
-                  ),
-                )
-              else
-                const PopupMenuItem(
-                  value: 'mark_unended',
-                  child: Row(
-                    children: [
-                      Icon(Icons.flag, size: 18, color: Colors.green),
-                      SizedBox(width: 8),
-                      Text('Mark as Unended'),
+                      Text('Edit'),
                     ],
                   ),
                 ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete, size: 18, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Delete', style: TextStyle(color: Colors.red)),
-                  ],
+                if (!isPriceOnly) ...[
+                  if (history.finishedAt == null)
+                    const PopupMenuItem(
+                      value: 'mark_ended',
+                      child: Row(
+                        children: [
+                          Icon(Icons.flag, size: 18, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Text('Mark as Ended'),
+                        ],
+                      ),
+                    )
+                  else
+                    const PopupMenuItem(
+                      value: 'mark_unended',
+                      child: Row(
+                        children: [
+                          Icon(Icons.flag, size: 18, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('Mark as Unended'),
+                        ],
+                      ),
+                    ),
+                ],
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete, size: 18, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Delete', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ];
+            },
           ),
         ],
       ),
@@ -1757,6 +1764,16 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
           }
         }
 
+        // Only stamp remaining_updated_at when the remaining value actually changed.
+        // Editing price, date, or description without touching remaining must
+        // preserve the existing timestamp so daily-usage stats don't shift.
+        DateTime? newRemainingUpdatedAt;
+        if (!clearRemaining &&
+            quantityRemaining != null &&
+            quantityRemaining != history.quantityRemaining) {
+          newRemainingUpdatedAt = DateTime.now();
+        }
+
         final updatedPriceHistory = history.copyWith(
           price: price,
           recordedAt: recordedAt,
@@ -1764,6 +1781,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
           quantityPurchased: quantityPurchased ?? history.quantityPurchased,
           quantityRemaining: quantityRemaining,
           quantityConsumed: quantityConsumed,
+          remainingUpdatedAt: newRemainingUpdatedAt,
           clearQuantityRemaining: clearRemaining,
           clearQuantityConsumed: clearConsumed,
         );

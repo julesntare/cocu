@@ -7,6 +7,10 @@ class Item {
   final DateTime updatedAt;
   final bool trackUsage;
   final String? usageUnit;
+  // When true the item is a pure price-history tracker: no active/cycle
+  // tracking, no green border, hidden from Active/Finished/Due Soon/Overdue
+  // filters, and "Mark as Ended" is not shown.
+  final bool isPriceOnly;
 
   Item({
     this.id,
@@ -17,6 +21,7 @@ class Item {
     required this.updatedAt,
     this.trackUsage = false,
     this.usageUnit,
+    this.isPriceOnly = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -29,6 +34,7 @@ class Item {
       'updated_at': updatedAt.toIso8601String(),
       'track_usage': trackUsage ? 1 : 0,
       'usage_unit': usageUnit,
+      'is_price_only': isPriceOnly ? 1 : 0,
     };
   }
 
@@ -42,6 +48,7 @@ class Item {
       updatedAt: DateTime.parse(map['updated_at']),
       trackUsage: map['track_usage'] == 1,
       usageUnit: map['usage_unit'],
+      isPriceOnly: map['is_price_only'] == 1,
     );
   }
 
@@ -54,6 +61,7 @@ class Item {
     DateTime? updatedAt,
     bool? trackUsage,
     String? usageUnit,
+    bool? isPriceOnly,
   }) {
     return Item(
       id: id ?? this.id,
@@ -64,6 +72,7 @@ class Item {
       updatedAt: updatedAt ?? this.updatedAt,
       trackUsage: trackUsage ?? this.trackUsage,
       usageUnit: usageUnit ?? this.usageUnit,
+      isPriceOnly: isPriceOnly ?? this.isPriceOnly,
     );
   }
 }

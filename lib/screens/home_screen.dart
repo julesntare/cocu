@@ -7,7 +7,7 @@ import 'add_item_screen.dart';
 import 'item_detail_screen.dart';
 import 'settings_screen.dart';
 
-enum ItemFilter { all, active, dueSoon, overdue, finished }
+enum ItemFilter { all, active, dueSoon, overdue, finished, priceOnly }
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -78,7 +78,12 @@ class _HomeScreenState extends State<HomeScreen> {
           break;
         case ItemFilter.finished:
           filtered = filtered
-              .where((item) => _hasActiveRecordMap[item.id] != true)
+              .where((item) => _hasActiveRecordMap[item.id] == false)
+              .toList();
+          break;
+        case ItemFilter.priceOnly:
+          filtered = filtered
+              .where((item) => item.isPriceOnly)
               .toList();
           break;
         case ItemFilter.all:
@@ -127,8 +132,12 @@ class _HomeScreenState extends State<HomeScreen> {
               latestEntry.recordedAt.month, latestEntry.recordedAt.day);
           final currentDate = DateTime(now.year, now.month, now.day);
           ongoingDays = currentDate.difference(startDate).inDays;
-          // Check if the latest entry has no finishedAt (meaning it's still ongoing)
-          hasActiveRecord = latestEntry.finishedAt == null;
+          // Price-only items are excluded from active/cycle tracking.
+          // All other items show the green border when their latest entry
+          // has no finishedAt.
+          if (!item.isPriceOnly) {
+            hasActiveRecord = latestEntry.finishedAt == null;
+          }
         }
 
         final cycleProgress =
@@ -158,7 +167,11 @@ class _HomeScreenState extends State<HomeScreen> {
         final ongoingDays = itemData['ongoingDays'] as int;
         final hasActiveRecord = itemData['hasActiveRecord'] as bool;
         ongoingDaysMap[item.id!] = ongoingDays;
-        hasActiveRecordMap[item.id!] = hasActiveRecord;
+        // Price-only items are not added to the map so they stay invisible
+        // to all status filters (Active / Finished / Due Soon / Overdue).
+        if (!item.isPriceOnly) {
+          hasActiveRecordMap[item.id!] = hasActiveRecord;
+        }
         cycleProgressMap[item.id!] = itemData['cycleProgress'] as double?;
       }
 
@@ -465,6 +478,36 @@ class _HomeScreenState extends State<HomeScreen> {
                         : FontWeight.normal,
                   ),
                 ),
+                const SizedBox(width: 8),
+                FilterChip(
+                  label: const Text('Price Only'),
+                  selected: _currentFilter == ItemFilter.priceOnly,
+                  onSelected: (selected) {
+                    if (selected) _changeFilter(ItemFilter.priceOnly);
+                  },
+                  selectedColor: const Color(0xFF9C27B0).withValues(alpha: 0.2),
+                  checkmarkColor: const Color(0xFF9C27B0),
+                  avatar: _currentFilter == ItemFilter.priceOnly
+                      ? null
+                      : Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Color(0xFF9C27B0), Color(0xFFBA68C8)],
+                            ),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                  labelStyle: TextStyle(
+                    color: _currentFilter == ItemFilter.priceOnly
+                        ? const Color(0xFF9C27B0)
+                        : AppColors.textSecondary,
+                    fontWeight: _currentFilter == ItemFilter.priceOnly
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                  ),
+                ),
               ],
             ),
           ),
@@ -541,7 +584,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                   progress >= 0.9;
 
                               LinearGradient? barGradient;
-                              if (isOverdue) {
+                              if (item.isPriceOnly) {
+                                barGradient = const LinearGradient(
+                                  colors: [Color(0xFF9C27B0), Color(0xFFBA68C8)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                );
+                              } else if (isOverdue) {
                                 barGradient = _getOverdueGradient();
                               } else if (isDueSoon) {
                                 barGradient = _getDueSoonGradient();
