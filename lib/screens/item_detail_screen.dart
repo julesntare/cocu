@@ -3671,16 +3671,18 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
     final usedHistoricalPattern =
         purchase['usedHistoricalPattern'] as bool? ?? false;
 
-    // Calculate display values - avoid N/A when we can infer values
-    final fallbackDailyUsage =
-        (isComplete && quantityPurchased != null && daysTracked > 0)
-            ? quantityPurchased / daysTracked
-            : null;
-    final displayDailyUsage = avgDailyUsage ?? fallbackDailyUsage;
+    // Calculate display values - avoid N/A when we can infer values.
+    // quantityRemaining here is already resolved (derived from quantityConsumed
+    // if needed) by getPurchaseCycleStats, so prefer it directly.
+    final displayDailyUsage = avgDailyUsage;
     final displayConsumed = consumed ??
-        (isComplete && quantityPurchased != null ? quantityPurchased : null);
+        (quantityPurchased != null && quantityRemaining != null
+            ? quantityPurchased - quantityRemaining
+            : (isComplete && quantityPurchased != null ? quantityPurchased : null));
     final displayRemaining = quantityRemaining ??
-        (isComplete && quantityPurchased != null ? 0.0 : null);
+        (consumed != null && quantityPurchased != null
+            ? (quantityPurchased - consumed).clamp(0.0, quantityPurchased)
+            : (isComplete && quantityPurchased != null ? 0.0 : null));
 
     final bool canGoLeft = _currentCycleIndex < widget.cycles.length - 1;
     final bool canGoRight = _currentCycleIndex > 0;

@@ -44,6 +44,14 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
     return db.difference(da).inDays.abs();
   }
 
+  int _naiveAvgCycleDays(List<dynamic> manual) {
+    int total = 0;
+    for (int i = 1; i < manual.length; i++) {
+      total += _daysBetween(manual[i - 1].recordedAt, manual[i].recordedAt);
+    }
+    return (total / (manual.length - 1)).round();
+  }
+
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
@@ -65,21 +73,64 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
 
         if (manual.length < 2) continue;
 
-        int totalDays = 0;
-        for (int i = 1; i < manual.length; i++) {
-          totalDays +=
-              _daysBetween(manual[i - 1].recordedAt, manual[i].recordedAt);
-        }
-        final avgCycleDays = totalDays / (manual.length - 1);
-
+        final lastEntry = manual.last;
         final lastPurchase = DateTime(
-          manual.last.recordedAt.year,
-          manual.last.recordedAt.month,
-          manual.last.recordedAt.day,
+          lastEntry.recordedAt.year,
+          lastEntry.recordedAt.month,
+          lastEntry.recordedAt.day,
         );
 
+        // --- Quantity-aware cycle estimation ---
+        // Compute avgDailyUsage from all completed purchases (everything except
+        // the most recent, which is still ongoing).
+        double totalConsumed = 0.0;
+        int totalQtyDays = 0;
+
+        for (int i = 0; i < manual.length - 1; i++) {
+          final entry = manual[i];
+          if (entry.quantityPurchased == null) continue;
+
+          // End date: explicit finishedAt or next entry's start date
+          final endDate = entry.finishedAt ?? manual[i + 1].recordedAt;
+          final days = _daysBetween(entry.recordedAt, endDate);
+          if (days <= 0) continue;
+
+          // Resolve effective remaining (same logic as getPurchaseCycleStats)
+          final double effectiveRemaining;
+          if (entry.quantityRemaining != null) {
+            effectiveRemaining = entry.quantityRemaining!;
+          } else if (entry.quantityConsumed != null) {
+            effectiveRemaining =
+                (entry.quantityPurchased! - entry.quantityConsumed!)
+                    .clamp(0.0, entry.quantityPurchased!);
+          } else {
+            effectiveRemaining = 0.0;
+          }
+
+          final consumed = entry.quantityPurchased! - effectiveRemaining;
+          if (consumed > 0) {
+            totalConsumed += consumed;
+            totalQtyDays += days;
+          }
+        }
+
+        // Use quantity-proportional estimate when data is available
+        int estimatedCycleDays;
+        if (totalQtyDays > 0 && lastEntry.quantityPurchased != null) {
+          final avgDailyUsage = totalConsumed / totalQtyDays;
+          if (avgDailyUsage > 0) {
+            estimatedCycleDays =
+                (lastEntry.quantityPurchased! / avgDailyUsage).round();
+          } else {
+            estimatedCycleDays = _naiveAvgCycleDays(manual);
+          }
+        } else {
+          // Fallback: naive date-gap average
+          estimatedCycleDays = _naiveAvgCycleDays(manual);
+        }
+
         DateTime expectedDate =
-            lastPurchase.add(Duration(days: avgCycleDays.round()));
+            lastPurchase.add(Duration(days: estimatedCycleDays));
 
         if (expectedDate.isBefore(todayDate)) {
           expectedDate = todayDate;
@@ -277,6 +328,15 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
     final monthTotal = entries.fold(0.0, (sum, e) => sum + e.price);
     final isCurrent = _isCurrentMonth(key);
 
+    // Group by date
+    final Map<String, List<_UpcomingItem>> byDate = {};
+    for (final entry in entries) {
+      final dateKey =
+          '${entry.expectedDate.year}-${entry.expectedDate.month.toString().padLeft(2, '0')}-${entry.expectedDate.day.toString().padLeft(2, '0')}';
+      byDate.putIfAbsent(dateKey, () => []).add(entry);
+    }
+    final dateKeys = byDate.keys.toList()..sort();
+
     return Column(
       children: [
         Container(
@@ -325,26 +385,103 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
                   ),
                 ],
               ),
-              Text(
-                _formatAmount(monthTotal),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    _formatAmount(monthTotal),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    '${entries.length} item${entries.length == 1 ? '' : 's'}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                  ),
+                ],
               ),
             ],
           ),
         ),
         Expanded(
           child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-            itemCount: entries.length,
-            itemBuilder: (context, i) =>
-                _buildItemCard(entries[i], isCurrent),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            itemCount: dateKeys.length,
+            itemBuilder: (context, i) {
+              final dateKey = dateKeys[i];
+              final dateEntries = byDate[dateKey]!;
+              final subtotal =
+                  dateEntries.fold(0.0, (sum, e) => sum + e.price);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildDateHeader(
+                      dateEntries.first.expectedDate, isCurrent, subtotal),
+                  ...dateEntries.map((e) => _buildItemCard(e, isCurrent)),
+                ],
+              );
+            },
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDateHeader(
+      DateTime date, bool isCurrent, double subtotal) {
+    final now = DateTime.now();
+    final isToday = date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
+
+    final Color pillColor = isToday
+        ? const Color(0xFFF44336)
+        : isCurrent
+            ? AppColors.primaryStart
+            : const Color(0xFF607D8B);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 6),
+      child: Row(
+        children: [
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: pillColor,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              _formatDate(date),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Divider(
+                color: Colors.grey[300], height: 1, thickness: 1),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            _formatAmount(subtotal),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: isToday
+                  ? const Color(0xFFF44336)
+                  : isCurrent
+                      ? AppColors.primaryStart
+                      : const Color(0xFF607D8B),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -448,19 +585,6 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
                               color: isCurrent
                                   ? AppColors.primaryStart
                                   : AppColors.textPrimary,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            _formatDate(entry.expectedDate),
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: isToday
-                                  ? const Color(0xFFF44336)
-                                  : AppColors.textSecondary,
-                              fontWeight: isToday
-                                  ? FontWeight.w600
-                                  : FontWeight.normal,
                             ),
                           ),
                         ],

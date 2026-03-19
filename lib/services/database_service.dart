@@ -730,19 +730,43 @@ class DatabaseService {
     return maps.map((map) => PriceHistory.fromMap(map)).toList();
   }
 
-  // Get the latest remaining quantity for an item
+  // Get the latest remaining quantity for an item.
+  // Prefers entries with a direct quantity_remaining; falls back to deriving
+  // remaining from quantity_purchased - quantity_consumed when available.
   Future<double?> getLatestRemainingQuantity(int itemId) async {
     final db = await database;
-    final maps = await db.query(
+
+    // First: entries with directly recorded remaining
+    final mapsWithRemaining = await db.query(
       'price_history',
       where: 'item_id = ? AND quantity_remaining IS NOT NULL',
       whereArgs: [itemId],
       orderBy: 'recorded_at DESC',
       limit: 1,
     );
-    if (maps.isNotEmpty) {
-      return (maps.first['quantity_remaining'] as num?)?.toDouble();
+    if (mapsWithRemaining.isNotEmpty) {
+      return (mapsWithRemaining.first['quantity_remaining'] as num?)?.toDouble();
     }
+
+    // Fallback: derive remaining from consumed when both fields are present
+    final mapsWithConsumed = await db.query(
+      'price_history',
+      where:
+          'item_id = ? AND quantity_consumed IS NOT NULL AND quantity_purchased IS NOT NULL',
+      whereArgs: [itemId],
+      orderBy: 'recorded_at DESC',
+      limit: 1,
+    );
+    if (mapsWithConsumed.isNotEmpty) {
+      final purchased =
+          (mapsWithConsumed.first['quantity_purchased'] as num?)?.toDouble();
+      final consumed =
+          (mapsWithConsumed.first['quantity_consumed'] as num?)?.toDouble();
+      if (purchased != null && consumed != null) {
+        return (purchased - consumed).clamp(0.0, purchased);
+      }
+    }
+
     return null;
   }
 
@@ -873,12 +897,22 @@ class DatabaseService {
       if (entry.id == excludeId) continue;
 
       final qtyPurchased = entry.quantityPurchased ?? defaultQtyPurchased;
-      final qtyRemaining = entry.quantityRemaining ?? 0.0;
       final finishedAt = entry.finishedAt;
 
       if (qtyPurchased != null && finishedAt != null) {
         final days = _daysBetween(entry.recordedAt, finishedAt);
-        final consumed = qtyPurchased - qtyRemaining;
+
+        // Resolve effective remaining: prefer stored remaining, else derive from consumed
+        final double effectiveRemaining;
+        if (entry.quantityRemaining != null) {
+          effectiveRemaining = entry.quantityRemaining!;
+        } else if (entry.quantityConsumed != null) {
+          effectiveRemaining = (qtyPurchased - entry.quantityConsumed!).clamp(0.0, qtyPurchased);
+        } else {
+          effectiveRemaining = 0.0;
+        }
+
+        final consumed = qtyPurchased - effectiveRemaining;
         if (consumed > 0 && days > 0) {
           totalConsumed += consumed;
           totalDays += days;
@@ -947,14 +981,24 @@ class DatabaseService {
         endDate = newerEntry.recordedAt;
       }
 
-      // Only count completed purchases for historical average
-      if (endDate != null) {
+      // Only count completed purchases with their own quantityPurchased for accuracy
+      // (skip fallback entries to avoid skewing the average with borrowed quantities)
+      if (endDate != null && entry.quantityPurchased != null) {
         final days = _daysBetween(purchaseDate, endDate);
-        double? qtyPurchased = entry.quantityPurchased ?? defaultQuantityPurchased;
-        final qtyRemaining = entry.quantityRemaining ?? 0.0;
+        final qtyPurchased = entry.quantityPurchased!;
 
-        if (qtyPurchased != null && days > 0) {
-          final consumed = qtyPurchased - qtyRemaining;
+        // Resolve effective remaining: prefer stored remaining, else derive from consumed
+        final double effectiveRemaining;
+        if (entry.quantityRemaining != null) {
+          effectiveRemaining = entry.quantityRemaining!;
+        } else if (entry.quantityConsumed != null) {
+          effectiveRemaining = (qtyPurchased - entry.quantityConsumed!).clamp(0.0, qtyPurchased);
+        } else {
+          effectiveRemaining = 0.0;
+        }
+
+        if (days > 0) {
+          final consumed = qtyPurchased - effectiveRemaining;
           if (consumed > 0) {
             historicalTotalConsumed += consumed;
             historicalTotalDays += days;
@@ -972,7 +1016,6 @@ class DatabaseService {
 
       final purchaseDate = entry.recordedAt;
       DateTime? endDate = entry.finishedAt;
-      final quantityRemaining = entry.quantityRemaining;
       bool usedFallback = false;
       bool usedHistoricalPattern = false;
 
@@ -995,6 +1038,16 @@ class DatabaseService {
         usedFallback = true;
       }
 
+      // Resolve effective remaining: prefer stored remaining, else derive from
+      // quantityConsumed. This normalizes both recording modes into one value.
+      double? resolvedRemaining;
+      if (entry.quantityRemaining != null) {
+        resolvedRemaining = entry.quantityRemaining;
+      } else if (entry.quantityConsumed != null && quantityPurchased != null) {
+        resolvedRemaining = (quantityPurchased - entry.quantityConsumed!)
+            .clamp(0.0, quantityPurchased);
+      }
+
       // Calculate consumed and daily usage
       double? consumed;
       double? avgDailyUsage;
@@ -1006,8 +1059,9 @@ class DatabaseService {
         daysTracked = _daysBetween(purchaseDate, effectiveEndDate);
 
         if (quantityPurchased != null) {
-          // For completed entries without remaining specified, assume remaining = 0
-          final effectiveRemaining = usedFallback ? 0.0 : (quantityRemaining ?? 0.0);
+          // For completed entries: use resolved remaining (0 if fallback or unknown)
+          final effectiveRemaining =
+              usedFallback ? 0.0 : (resolvedRemaining ?? 0.0);
           consumed = quantityPurchased - effectiveRemaining;
           if (daysTracked > 0 && consumed > 0) {
             avgDailyUsage = consumed / daysTracked;
@@ -1017,9 +1071,14 @@ class DatabaseService {
         // Ongoing purchase: calculate days from purchase to now
         daysTracked = _daysBetween(purchaseDate, DateTime.now());
 
-        // For ongoing, try actual remaining first
-        if (quantityPurchased != null && quantityRemaining != null) {
-          final remainingUpdatedAt = entry.remainingUpdatedAt;
+        // Try to compute usage from resolved remaining.
+        // Only use the remainingUpdatedAt checkpoint when the user directly set
+        // quantityRemaining (not when it was derived from quantityConsumed,
+        // since consumed entries don't carry a meaningful checkpoint timestamp).
+        if (quantityPurchased != null && resolvedRemaining != null) {
+          final remainingUpdatedAt =
+              entry.quantityRemaining != null ? entry.remainingUpdatedAt : null;
+
           if (remainingUpdatedAt != null &&
               remainingUpdatedAt.isAfter(purchaseDate)) {
             // User manually updated remaining after the purchase date — use as
@@ -1027,19 +1086,18 @@ class DatabaseService {
             // consumption forward from there to get a current estimate.
             final daysToCheckpoint =
                 _daysBetween(purchaseDate, remainingUpdatedAt);
-            final consumedToCheckpoint = quantityPurchased - quantityRemaining;
+            final consumedToCheckpoint = quantityPurchased - resolvedRemaining;
 
             if (daysToCheckpoint > 0 && consumedToCheckpoint > 0) {
               final rateAtCheckpoint = consumedToCheckpoint / daysToCheckpoint;
               final checkpointDay = DateTime(remainingUpdatedAt.year,
                   remainingUpdatedAt.month, remainingUpdatedAt.day);
               final nowDay = DateTime.now();
-              final todayDay =
-                  DateTime(nowDay.year, nowDay.month, nowDay.day);
+              final todayDay = DateTime(nowDay.year, nowDay.month, nowDay.day);
               final daysSinceCheckpoint =
                   todayDay.difference(checkpointDay).inDays;
               estimatedRemaining =
-                  quantityRemaining - (rateAtCheckpoint * daysSinceCheckpoint);
+                  resolvedRemaining - (rateAtCheckpoint * daysSinceCheckpoint);
               if (estimatedRemaining < 0) estimatedRemaining = 0;
               consumed = quantityPurchased - estimatedRemaining;
               if (daysTracked > 0 && consumed > 0) {
@@ -1048,20 +1106,21 @@ class DatabaseService {
               usedHistoricalPattern = true; // display estimated remaining
             } else {
               // Same-day edit or zero consumption recorded: simple calculation
-              consumed = quantityPurchased - quantityRemaining;
+              consumed = quantityPurchased - resolvedRemaining;
               if (daysTracked > 0 && consumed > 0) {
                 avgDailyUsage = consumed / daysTracked;
               }
             }
           } else {
-            // No post-purchase checkpoint: original behaviour
-            consumed = quantityPurchased - quantityRemaining;
+            // No post-purchase checkpoint: use resolved remaining directly
+            consumed = quantityPurchased - resolvedRemaining;
             if (daysTracked > 0 && consumed > 0) {
               avgDailyUsage = consumed / daysTracked;
             }
           }
         }
-        // If daily usage still unknown (consumed == 0 or no remaining data),
+
+        // If daily usage still unknown (no remaining/consumed data),
         // fall back to historical pattern to estimate current consumption
         if (avgDailyUsage == null &&
             quantityPurchased != null &&
@@ -1074,9 +1133,9 @@ class DatabaseService {
           if (consumed > quantityPurchased) {
             consumed = quantityPurchased;
           }
-          // Estimate current remaining from the purchase-time remaining
-          // (or from quantityPurchased if no remaining was recorded)
-          final startingRemaining = quantityRemaining ?? quantityPurchased;
+          // Estimate current remaining from resolved remaining at purchase time
+          // (or from quantityPurchased if nothing was recorded)
+          final startingRemaining = resolvedRemaining ?? quantityPurchased;
           estimatedRemaining = startingRemaining - consumed;
           if (estimatedRemaining < 0) estimatedRemaining = 0;
         }
@@ -1088,12 +1147,13 @@ class DatabaseService {
         'endDate': effectiveEndDate,
         'quantityPurchased': quantityPurchased,
         // For ongoing purchases using historical pattern, show estimated current
-        // remaining rather than the purchase-time remaining value
+        // remaining. For completed, use resolved remaining (derived from either
+        // quantityRemaining or quantityConsumed).
         'quantityRemaining': usedFallback && isComplete
             ? 0.0
             : (usedHistoricalPattern && !isComplete
                 ? estimatedRemaining
-                : (quantityRemaining ?? estimatedRemaining)),
+                : (resolvedRemaining ?? estimatedRemaining)),
         'consumed': consumed,
         'daysTracked': daysTracked,
         'avgDailyUsage': avgDailyUsage,
@@ -1108,9 +1168,15 @@ class DatabaseService {
     return purchases;
   }
 
-  /// Returns how far through the average purchase cycle the item currently is,
+  /// Returns how far through the expected purchase cycle the item currently is,
   /// as a fraction (e.g. 0.9 = 90%, 1.2 = 120% / overdue). Returns null if
   /// fewer than 2 manual purchase entries exist (cycle length cannot be determined).
+  ///
+  /// When quantity data is available, the expected cycle length is estimated as
+  /// `currentQuantityPurchased / avgDailyUsage` so that purchases of different
+  /// sizes are judged against the right expected duration — a 40-unit purchase
+  /// should not be flagged overdue using a cycle length derived from a 22-unit
+  /// purchase. Falls back to a naive date-gap average when no quantity data exists.
   Future<double?> getPurchaseCycleProgress(int itemId,
       {int? subItemId}) async {
     final db = await database;
@@ -1136,25 +1202,68 @@ class DatabaseService {
     if (maps.length < 2) return null;
 
     final entries = maps.map((m) => PriceHistory.fromMap(m)).toList();
+    final lastEntry = entries.last;
 
-    // Average the gaps between consecutive purchase dates
+    // Days elapsed since the most recent purchase
+    final lastPurchaseDate = DateTime(
+      lastEntry.recordedAt.year,
+      lastEntry.recordedAt.month,
+      lastEntry.recordedAt.day,
+    );
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+    final daysElapsed = todayDate.difference(lastPurchaseDate).inDays;
+
+    // --- Quantity-aware estimation ---
+    // Compute avgDailyUsage from all completed purchases that have quantity data.
+    // "Completed" = has a finishedAt, or is superseded by a newer purchase.
+    double totalConsumed = 0.0;
+    int totalDays = 0;
+
+    for (int i = 0; i < entries.length - 1; i++) {
+      final entry = entries[i];
+      if (entry.quantityPurchased == null) continue;
+
+      // End date: explicit finishedAt or next entry's start date
+      final endDate = entry.finishedAt ?? entries[i + 1].recordedAt;
+      final days = _daysBetween(entry.recordedAt, endDate);
+      if (days <= 0) continue;
+
+      // Resolve effective remaining (same logic as getPurchaseCycleStats)
+      final double effectiveRemaining;
+      if (entry.quantityRemaining != null) {
+        effectiveRemaining = entry.quantityRemaining!;
+      } else if (entry.quantityConsumed != null) {
+        effectiveRemaining = (entry.quantityPurchased! - entry.quantityConsumed!)
+            .clamp(0.0, entry.quantityPurchased!);
+      } else {
+        effectiveRemaining = 0.0;
+      }
+
+      final consumed = entry.quantityPurchased! - effectiveRemaining;
+      if (consumed > 0) {
+        totalConsumed += consumed;
+        totalDays += days;
+      }
+    }
+
+    // If we have a reliable avgDailyUsage and the current purchase has a known
+    // quantity, use quantity-proportional cycle estimation.
+    if (totalDays > 0 && lastEntry.quantityPurchased != null) {
+      final avgDailyUsage = totalConsumed / totalDays;
+      if (avgDailyUsage > 0) {
+        final estimatedCycleDays = lastEntry.quantityPurchased! / avgDailyUsage;
+        return daysElapsed / estimatedCycleDays;
+      }
+    }
+
+    // --- Fallback: naive date-gap average (no quantity data available) ---
     int totalCycleDays = 0;
     for (int i = 1; i < entries.length; i++) {
       totalCycleDays +=
           _daysBetween(entries[i - 1].recordedAt, entries[i].recordedAt);
     }
     final avgCycleDays = totalCycleDays / (entries.length - 1);
-
-    // Days elapsed since the most recent purchase
-    final lastPurchaseDate = DateTime(
-      entries.last.recordedAt.year,
-      entries.last.recordedAt.month,
-      entries.last.recordedAt.day,
-    );
-    final today = DateTime.now();
-    final todayDate = DateTime(today.year, today.month, today.day);
-    final daysElapsed = todayDate.difference(lastPurchaseDate).inDays;
-
     return daysElapsed / avgCycleDays;
   }
 
