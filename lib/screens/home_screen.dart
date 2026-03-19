@@ -178,12 +178,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
       setState(() {
         _items = sortedItems;
-        _filteredItems = sortedItems;
         _hasActiveRecordMap = hasActiveRecordMap;
         _cycleProgressMap = cycleProgressMap;
         _isLoading = false;
         _summaryRefreshKey++; // Refresh the summary widget
       });
+      _applyFilters();
     } catch (e) {
       setState(() {
         _isLoading = false;
