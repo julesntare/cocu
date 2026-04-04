@@ -129,12 +129,21 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
           estimatedCycleDays = _naiveAvgCycleDays(manual);
         }
 
-        DateTime expectedDate =
-            lastPurchase.add(Duration(days: estimatedCycleDays));
-
-        if (expectedDate.isBefore(todayDate)) {
-          expectedDate = todayDate;
+        // If the last purchase is already finished, it ran out on finishedAt —
+        // that's when it should have been repurchased.
+        DateTime expectedDate;
+        if (lastEntry.finishedAt != null) {
+          expectedDate = DateTime(
+            lastEntry.finishedAt!.year,
+            lastEntry.finishedAt!.month,
+            lastEntry.finishedAt!.day,
+          );
+        } else {
+          expectedDate = lastPurchase.add(Duration(days: estimatedCycleDays));
         }
+
+        // Skip items that are already overdue (handled by the overdue filter)
+        if (expectedDate.isBefore(todayDate)) continue;
 
         final monthKey =
             '${expectedDate.year}-${expectedDate.month.toString().padLeft(2, '0')}';
