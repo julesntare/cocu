@@ -1224,8 +1224,9 @@ class DatabaseService {
       final entry = entries[i];
       if (entry.quantityPurchased == null) continue;
 
-      // End date: explicit finishedAt or next entry's start date
-      final endDate = entry.finishedAt ?? entries[i + 1].recordedAt;
+      // End date: always use next purchase date (purchase interval), not
+      // finishedAt — consumption duration ≠ repurchase interval.
+      final endDate = entries[i + 1].recordedAt;
       final days = _daysBetween(entry.recordedAt, endDate);
       if (days <= 0) continue;
 
