@@ -3681,7 +3681,9 @@ class _PurchasePeriodStatsCardState extends State<_PurchasePeriodStatsCard> {
             : (isComplete && quantityPurchased != null ? quantityPurchased : null));
     final displayRemaining = quantityRemaining ??
         (consumed != null && quantityPurchased != null
-            ? (quantityPurchased - consumed).clamp(0.0, quantityPurchased)
+            ? (!isComplete && consumed >= quantityPurchased
+                ? null // Overdue ongoing: N/A
+                : (quantityPurchased - consumed).clamp(0.0, quantityPurchased))
             : (isComplete && quantityPurchased != null ? 0.0 : null));
 
     final bool canGoLeft = _currentCycleIndex < widget.cycles.length - 1;

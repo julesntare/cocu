@@ -987,9 +987,13 @@ class DatabaseService {
         final days = _daysBetween(purchaseDate, endDate);
         final qtyPurchased = entry.quantityPurchased!;
 
-        // Resolve effective remaining: prefer stored remaining, else derive from consumed
+        // Resolve effective remaining. If the cycle ended because the next
+        // purchase was recorded (no finishedAt), any stored remaining was a
+        // mid-cycle checkpoint — treat as fully consumed (remaining = 0).
         final double effectiveRemaining;
-        if (entry.quantityRemaining != null) {
+        if (entry.finishedAt == null) {
+          effectiveRemaining = 0.0; // completed by next purchase
+        } else if (entry.quantityRemaining != null) {
           effectiveRemaining = entry.quantityRemaining!;
         } else if (entry.quantityConsumed != null) {
           effectiveRemaining = (qtyPurchased - entry.quantityConsumed!).clamp(0.0, qtyPurchased);
@@ -1059,9 +1063,14 @@ class DatabaseService {
         daysTracked = _daysBetween(purchaseDate, effectiveEndDate);
 
         if (quantityPurchased != null) {
-          // For completed entries: use resolved remaining (0 if fallback or unknown)
-          final effectiveRemaining =
-              usedFallback ? 0.0 : (resolvedRemaining ?? 0.0);
+          // For completed entries: if the cycle ended because the next purchase
+          // was recorded (no explicit finishedAt), any stored remaining was a
+          // mid-cycle checkpoint — assume all was consumed.
+          // Only honour resolvedRemaining when finishedAt was explicitly set.
+          final completedByNextPurchase = endDate == null;
+          final effectiveRemaining = (usedFallback || completedByNextPurchase)
+              ? 0.0
+              : (resolvedRemaining ?? 0.0);
           consumed = quantityPurchased - effectiveRemaining;
           if (daysTracked > 0 && consumed > 0) {
             avgDailyUsage = consumed / daysTracked;
@@ -1089,6 +1098,7 @@ class DatabaseService {
             final consumedToCheckpoint = quantityPurchased - resolvedRemaining;
 
             if (daysToCheckpoint > 0 && consumedToCheckpoint > 0) {
+              // Normal checkpoint: derive rate up to checkpoint, project forward.
               final rateAtCheckpoint = consumedToCheckpoint / daysToCheckpoint;
               final checkpointDay = DateTime(remainingUpdatedAt.year,
                   remainingUpdatedAt.month, remainingUpdatedAt.day);
@@ -1096,27 +1106,62 @@ class DatabaseService {
               final todayDay = DateTime(nowDay.year, nowDay.month, nowDay.day);
               final daysSinceCheckpoint =
                   todayDay.difference(checkpointDay).inDays;
-              estimatedRemaining =
+              final projectedRemaining =
                   resolvedRemaining - (rateAtCheckpoint * daysSinceCheckpoint);
-              if (estimatedRemaining < 0) estimatedRemaining = 0;
-              consumed = quantityPurchased - estimatedRemaining;
-              if (daysTracked > 0 && consumed > 0) {
-                avgDailyUsage = consumed / daysTracked;
+              if (projectedRemaining >= 0) {
+                estimatedRemaining = projectedRemaining;
+                consumed = quantityPurchased - projectedRemaining;
+                if (daysTracked > 0 && consumed > 0) {
+                  avgDailyUsage = consumed / daysTracked;
+                }
+              } else {
+                // Overdue: cap consumed at purchased, remaining N/A.
+                // Daily usage = purchased / total days (reduces as time passes).
+                consumed = quantityPurchased;
+                estimatedRemaining = null;
+                avgDailyUsage =
+                    daysTracked > 0 ? quantityPurchased / daysTracked : null;
               }
               usedHistoricalPattern = true; // display estimated remaining
             } else {
-              // Same-day edit or zero consumption recorded: simple calculation
-              consumed = quantityPurchased - resolvedRemaining;
-              if (daysTracked > 0 && consumed > 0) {
-                avgDailyUsage = consumed / daysTracked;
+              // Same-day edit or zero consumption: no in-cycle rate derivable.
+              // Project forward from resolvedRemaining using historical rate so
+              // remaining keeps decreasing instead of sticking at the manual value.
+              if (historicalAvgDailyUsage != null) {
+                usedHistoricalPattern = true;
+                final checkpointDay = DateTime(remainingUpdatedAt.year,
+                    remainingUpdatedAt.month, remainingUpdatedAt.day);
+                final nowDay = DateTime.now();
+                final todayDay =
+                    DateTime(nowDay.year, nowDay.month, nowDay.day);
+                final daysSinceUpdate =
+                    todayDay.difference(checkpointDay).inDays;
+                final projectedRemaining =
+                    resolvedRemaining - (historicalAvgDailyUsage * daysSinceUpdate);
+                if (projectedRemaining >= 0) {
+                  estimatedRemaining = projectedRemaining;
+                  consumed = quantityPurchased - projectedRemaining;
+                  avgDailyUsage = daysTracked > 0 ? consumed / daysTracked : null;
+                } else {
+                  consumed = quantityPurchased;
+                  estimatedRemaining = null;
+                  avgDailyUsage =
+                      daysTracked > 0 ? quantityPurchased / daysTracked : null;
+                }
+              } else {
+                consumed = quantityPurchased - resolvedRemaining;
+                if (daysTracked > 0 && consumed > 0) {
+                  avgDailyUsage = consumed / daysTracked;
+                }
               }
             }
           } else {
-            // No post-purchase checkpoint: use resolved remaining directly
+            // No remainingUpdatedAt timestamp (old data): can't project forward
+            // from the recorded remaining. Let the historical fallback below
+            // handle the estimate instead of sticking at the manual value.
+            // Only set consumed for display; leave avgDailyUsage null so the
+            // historical fallback can take over.
             consumed = quantityPurchased - resolvedRemaining;
-            if (daysTracked > 0 && consumed > 0) {
-              avgDailyUsage = consumed / daysTracked;
-            }
           }
         }
 
@@ -1127,17 +1172,23 @@ class DatabaseService {
             historicalAvgDailyUsage != null &&
             daysTracked > 0) {
           usedHistoricalPattern = true;
-          avgDailyUsage = historicalAvgDailyUsage;
-          consumed = historicalAvgDailyUsage * daysTracked;
-          // Cap consumed at quantity purchased
-          if (consumed > quantityPurchased) {
-            consumed = quantityPurchased;
-          }
-          // Estimate current remaining from resolved remaining at purchase time
-          // (or from quantityPurchased if nothing was recorded)
+          // Estimate remaining from uncapped projection to detect overdue.
           final startingRemaining = resolvedRemaining ?? quantityPurchased;
-          estimatedRemaining = startingRemaining - consumed;
-          if (estimatedRemaining < 0) estimatedRemaining = 0;
+          final projectedRemaining2 =
+              startingRemaining - (historicalAvgDailyUsage * daysTracked);
+          if (projectedRemaining2 < 0) {
+            // Overdue: cap consumed at purchased, remaining N/A.
+            // Daily usage = purchased / total days (reduces as time passes).
+            consumed = quantityPurchased;
+            estimatedRemaining = null;
+            avgDailyUsage =
+                daysTracked > 0 ? quantityPurchased / daysTracked : null;
+          } else {
+            avgDailyUsage = historicalAvgDailyUsage;
+            consumed = (historicalAvgDailyUsage * daysTracked)
+                .clamp(0.0, quantityPurchased);
+            estimatedRemaining = projectedRemaining2;
+          }
         }
       }
 
@@ -1230,16 +1281,9 @@ class DatabaseService {
       final days = _daysBetween(entry.recordedAt, endDate);
       if (days <= 0) continue;
 
-      // Resolve effective remaining (same logic as getPurchaseCycleStats)
-      final double effectiveRemaining;
-      if (entry.quantityRemaining != null) {
-        effectiveRemaining = entry.quantityRemaining!;
-      } else if (entry.quantityConsumed != null) {
-        effectiveRemaining = (entry.quantityPurchased! - entry.quantityConsumed!)
-            .clamp(0.0, entry.quantityPurchased!);
-      } else {
-        effectiveRemaining = 0.0;
-      }
+      // All entries here are completed by the next purchase (not finishedAt),
+      // so any stored remaining is a mid-cycle checkpoint — treat as 0.
+      const double effectiveRemaining = 0.0;
 
       final consumed = entry.quantityPurchased! - effectiveRemaining;
       if (consumed > 0) {
