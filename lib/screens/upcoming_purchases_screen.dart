@@ -6,14 +6,19 @@ import 'item_detail_screen.dart';
 
 class _UpcomingItem {
   final Item item;
-  final DateTime expectedDate;
-  final double price;
+  final DateTime expectedDate; // first occurrence in the month
+  final double price; // price per occurrence
+  final List<DateTime> allDatesInMonth; // all occurrences within the month
 
   const _UpcomingItem({
     required this.item,
     required this.expectedDate,
     required this.price,
+    required this.allDatesInMonth,
   });
+
+  double get totalMonthlyPrice => price * allDatesInMonth.length;
+  bool get isRecurring => allDatesInMonth.length > 1;
 }
 
 class UpcomingPurchasesScreen extends StatefulWidget {
@@ -148,10 +153,20 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
         final monthKey =
             '${expectedDate.year}-${expectedDate.month.toString().padLeft(2, '0')}';
 
+        // Collect all occurrences of this item within the same month
+        final monthEnd = DateTime(expectedDate.year, expectedDate.month + 1, 0);
+        final List<DateTime> allDatesInMonth = [];
+        DateTime projected = expectedDate;
+        while (!projected.isAfter(monthEnd)) {
+          allDatesInMonth.add(projected);
+          projected = projected.add(Duration(days: estimatedCycleDays));
+        }
+
         byMonth.putIfAbsent(monthKey, () => []).add(_UpcomingItem(
               item: item,
               expectedDate: expectedDate,
               price: item.currentPrice,
+              allDatesInMonth: allDatesInMonth,
             ));
       }
 
@@ -334,7 +349,7 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
 
   Widget _buildMonthTab(String key) {
     final entries = _byMonth[key]!;
-    final monthTotal = entries.fold(0.0, (sum, e) => sum + e.price);
+    final monthTotal = entries.fold(0.0, (sum, e) => sum + e.totalMonthlyPrice);
     final isCurrent = _isCurrentMonth(key);
 
     // Group by date
@@ -406,7 +421,14 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
                     ),
                   ),
                   Text(
-                    '${entries.length} item${entries.length == 1 ? '' : 's'}',
+                    () {
+                      final totalOccurrences = entries.fold(0, (sum, e) => sum + e.allDatesInMonth.length);
+                      final itemCount = entries.length;
+                      if (totalOccurrences == itemCount) {
+                        return '$itemCount item${itemCount == 1 ? '' : 's'}';
+                      }
+                      return '$itemCount item${itemCount == 1 ? '' : 's'} · $totalOccurrences purchases';
+                    }(),
                     style: const TextStyle(color: Colors.white70, fontSize: 11),
                   ),
                 ],
@@ -422,7 +444,7 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
               final dateKey = dateKeys[i];
               final dateEntries = byDate[dateKey]!;
               final subtotal =
-                  dateEntries.fold(0.0, (sum, e) => sum + e.price);
+                  dateEntries.fold(0.0, (sum, e) => sum + e.totalMonthlyPrice);
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -500,19 +522,178 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
         entry.expectedDate.month == now.month &&
         entry.expectedDate.day == now.day;
 
+    final accentGradient = isToday
+        ? const LinearGradient(
+            colors: [Color(0xFFF44336), Color(0xFFEF5350)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          )
+        : isCurrent
+            ? const LinearGradient(
+                colors: [Color(0xFFFF9800), Color(0xFFFFB74D)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : AppColors.primaryGradient;
+
+    final accentColor = isToday
+        ? const Color(0xFFF44336)
+        : isCurrent
+            ? AppColors.primaryStart
+            : AppColors.textPrimary;
+
+    final cardDecoration = BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      boxShadow: [
+        BoxShadow(
+          color: AppColors.primaryStart.withValues(alpha: 0.06),
+          blurRadius: 10,
+          offset: const Offset(0, 3),
+        ),
+      ],
+    );
+
+    if (entry.isRecurring) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: cardDecoration,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              leading: Container(
+                width: 4,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: accentGradient,
+                ),
+              ),
+              title: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            entry.item.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${entry.allDatesInMonth.length}× this month',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: accentColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          _formatAmount(entry.totalMonthlyPrice),
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: isCurrent
+                                ? AppColors.primaryStart
+                                : AppColors.textPrimary,
+                          ),
+                        ),
+                        Text(
+                          '${_formatAmount(entry.price)} each',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              onExpansionChanged: (_) {},
+              children: [
+                const Divider(height: 1, indent: 18, endIndent: 18),
+                ...entry.allDatesInMonth.map((date) {
+                  final isOccurrenceToday = date.year == now.year &&
+                      date.month == now.month &&
+                      date.day == now.day;
+                  return InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ItemDetailScreen(item: entry.item),
+                        ),
+                      ).then((_) => _loadData());
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 18, vertical: 10),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isOccurrenceToday
+                                  ? const Color(0xFFF44336)
+                                  : isCurrent
+                                      ? AppColors.primaryStart
+                                      : const Color(0xFF607D8B),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              _formatDate(date),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _formatAmount(entry.price),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: isCurrent
+                                  ? AppColors.primaryStart
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 4),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Single occurrence — original card style
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryStart.withValues(alpha: 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
+      decoration: cardDecoration,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -531,19 +712,7 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
                 width: 4,
                 height: 56,
                 decoration: BoxDecoration(
-                  gradient: isToday
-                      ? const LinearGradient(
-                          colors: [Color(0xFFF44336), Color(0xFFEF5350)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        )
-                      : isCurrent
-                          ? const LinearGradient(
-                              colors: [Color(0xFFFF9800), Color(0xFFFFB74D)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            )
-                          : AppColors.primaryGradient,
+                  gradient: accentGradient,
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(14),
                     bottomLeft: Radius.circular(14),
@@ -583,20 +752,15 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
                           ],
                         ),
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            _formatAmount(entry.price),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: isCurrent
-                                  ? AppColors.primaryStart
-                                  : AppColors.textPrimary,
-                            ),
-                          ),
-                        ],
+                      Text(
+                        _formatAmount(entry.price),
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: isCurrent
+                              ? AppColors.primaryStart
+                              : AppColors.textPrimary,
+                        ),
                       ),
                     ],
                   ),
