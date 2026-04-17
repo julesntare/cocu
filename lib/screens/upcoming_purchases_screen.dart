@@ -121,8 +121,9 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
 
         // Use quantity-proportional estimate when data is available
         int estimatedCycleDays;
+        double avgDailyUsage = 0;
         if (totalQtyDays > 0 && lastEntry.quantityPurchased != null) {
-          final avgDailyUsage = totalConsumed / totalQtyDays;
+          avgDailyUsage = totalConsumed / totalQtyDays;
           if (avgDailyUsage > 0) {
             estimatedCycleDays =
                 (lastEntry.quantityPurchased! / avgDailyUsage).round();
@@ -143,6 +144,38 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
             lastEntry.finishedAt!.month,
             lastEntry.finishedAt!.day,
           );
+        } else if (avgDailyUsage > 0 &&
+            lastEntry.quantityPurchased != null &&
+            lastEntry.quantityRemaining != null) {
+          // Checkpoint-based projection: use the known remaining quantity to
+          // project forward with the actual in-cycle usage rate.
+          final checkpointDate = lastEntry.remainingUpdatedAt != null
+              ? DateTime(
+                  lastEntry.remainingUpdatedAt!.year,
+                  lastEntry.remainingUpdatedAt!.month,
+                  lastEntry.remainingUpdatedAt!.day,
+                )
+              : lastPurchase;
+
+          final daysToCheckpoint = _daysBetween(lastPurchase, checkpointDate);
+          final consumedToCheckpoint =
+              lastEntry.quantityPurchased! - lastEntry.quantityRemaining!;
+          // Prefer in-cycle rate if derivable; fall back to historical average
+          final inCycleRate = (daysToCheckpoint > 0 && consumedToCheckpoint > 0)
+              ? consumedToCheckpoint / daysToCheckpoint
+              : avgDailyUsage;
+
+          final daysSinceCheckpoint = _daysBetween(checkpointDate, todayDate);
+          final projectedRemaining =
+              lastEntry.quantityRemaining! - (inCycleRate * daysSinceCheckpoint);
+
+          if (projectedRemaining <= 0) {
+            // Already run out — overdue, skip this item
+            continue;
+          }
+
+          final daysUntilEmpty = (projectedRemaining / inCycleRate).ceil();
+          expectedDate = todayDate.add(Duration(days: daysUntilEmpty));
         } else {
           expectedDate = lastPurchase.add(Duration(days: estimatedCycleDays));
         }
