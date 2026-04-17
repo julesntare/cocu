@@ -6,12 +6,14 @@ import 'item_detail_screen.dart';
 
 class _UpcomingItem {
   final Item item;
+  final String? subItemName; // non-null when this prediction is for a sub-item
   final DateTime expectedDate; // first occurrence in the month
   final double price; // price per occurrence
   final List<DateTime> allDatesInMonth; // all occurrences within the month
 
   const _UpcomingItem({
     required this.item,
+    this.subItemName,
     required this.expectedDate,
     required this.price,
     required this.allDatesInMonth,
@@ -57,6 +59,124 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
     return (total / (manual.length - 1)).round();
   }
 
+  /// Returns an [_UpcomingItem] for the given sorted [manual] entries, or null
+  /// if there is insufficient history, the item is already overdue, or the
+  /// current cycle is already depleted.
+  _UpcomingItem? _buildUpcomingItem({
+    required Item item,
+    String? subItemName,
+    required List<dynamic> manual,
+    required DateTime todayDate,
+    required double price,
+  }) {
+    if (manual.length < 2) return null;
+
+    final lastEntry = manual.last;
+    final lastPurchase = DateTime(
+      lastEntry.recordedAt.year,
+      lastEntry.recordedAt.month,
+      lastEntry.recordedAt.day,
+    );
+
+    double totalConsumed = 0.0;
+    int totalQtyDays = 0;
+
+    for (int i = 0; i < manual.length - 1; i++) {
+      final entry = manual[i];
+      if (entry.quantityPurchased == null) continue;
+
+      final endDate = entry.finishedAt ?? manual[i + 1].recordedAt;
+      final days = _daysBetween(entry.recordedAt, endDate);
+      if (days <= 0) continue;
+
+      final double effectiveRemaining;
+      if (entry.quantityRemaining != null) {
+        effectiveRemaining = entry.quantityRemaining!;
+      } else if (entry.quantityConsumed != null) {
+        effectiveRemaining =
+            (entry.quantityPurchased! - entry.quantityConsumed!)
+                .clamp(0.0, entry.quantityPurchased!);
+      } else {
+        effectiveRemaining = 0.0;
+      }
+
+      final consumed = entry.quantityPurchased! - effectiveRemaining;
+      if (consumed > 0) {
+        totalConsumed += consumed;
+        totalQtyDays += days;
+      }
+    }
+
+    int estimatedCycleDays;
+    double avgDailyUsage = 0;
+    if (totalQtyDays > 0 && lastEntry.quantityPurchased != null) {
+      avgDailyUsage = totalConsumed / totalQtyDays;
+      if (avgDailyUsage > 0) {
+        estimatedCycleDays =
+            (lastEntry.quantityPurchased! / avgDailyUsage).round();
+      } else {
+        estimatedCycleDays = _naiveAvgCycleDays(manual);
+      }
+    } else {
+      estimatedCycleDays = _naiveAvgCycleDays(manual);
+    }
+
+    DateTime expectedDate;
+    if (lastEntry.finishedAt != null) {
+      expectedDate = DateTime(
+        lastEntry.finishedAt!.year,
+        lastEntry.finishedAt!.month,
+        lastEntry.finishedAt!.day,
+      );
+    } else if (avgDailyUsage > 0 &&
+        lastEntry.quantityPurchased != null &&
+        lastEntry.quantityRemaining != null) {
+      final checkpointDate = lastEntry.remainingUpdatedAt != null
+          ? DateTime(
+              lastEntry.remainingUpdatedAt!.year,
+              lastEntry.remainingUpdatedAt!.month,
+              lastEntry.remainingUpdatedAt!.day,
+            )
+          : lastPurchase;
+
+      final daysToCheckpoint = _daysBetween(lastPurchase, checkpointDate);
+      final consumedToCheckpoint =
+          lastEntry.quantityPurchased! - lastEntry.quantityRemaining!;
+      final inCycleRate = (daysToCheckpoint > 0 && consumedToCheckpoint > 0)
+          ? consumedToCheckpoint / daysToCheckpoint
+          : avgDailyUsage;
+
+      final daysSinceCheckpoint = _daysBetween(checkpointDate, todayDate);
+      final projectedRemaining =
+          lastEntry.quantityRemaining! - (inCycleRate * daysSinceCheckpoint);
+
+      if (projectedRemaining <= 0) return null; // overdue
+
+      final daysUntilEmpty = (projectedRemaining / inCycleRate).ceil();
+      expectedDate = todayDate.add(Duration(days: daysUntilEmpty));
+    } else {
+      expectedDate = lastPurchase.add(Duration(days: estimatedCycleDays));
+    }
+
+    if (expectedDate.isBefore(todayDate)) return null;
+
+    final monthEnd = DateTime(expectedDate.year, expectedDate.month + 1, 0);
+    final List<DateTime> allDatesInMonth = [];
+    DateTime projected = expectedDate;
+    while (!projected.isAfter(monthEnd)) {
+      allDatesInMonth.add(projected);
+      projected = projected.add(Duration(days: estimatedCycleDays));
+    }
+
+    return _UpcomingItem(
+      item: item,
+      subItemName: subItemName,
+      expectedDate: expectedDate,
+      price: price,
+      allDatesInMonth: allDatesInMonth,
+    );
+  }
+
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
@@ -71,136 +191,47 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
         if (item.isPriceOnly) continue;
 
         final history = await _db.getPriceHistory(item.id!);
-        final manual = history
+
+        // Item-level entries (no sub-item)
+        final itemManual = history
             .where((e) => e.entryType == 'manual' && e.subItemId == null)
             .toList()
           ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
 
-        if (manual.length < 2) continue;
-
-        final lastEntry = manual.last;
-        final lastPurchase = DateTime(
-          lastEntry.recordedAt.year,
-          lastEntry.recordedAt.month,
-          lastEntry.recordedAt.day,
+        final itemUpcoming = _buildUpcomingItem(
+          item: item,
+          manual: itemManual,
+          todayDate: todayDate,
+          price: item.currentPrice,
         );
-
-        // --- Quantity-aware cycle estimation ---
-        // Compute avgDailyUsage from all completed purchases (everything except
-        // the most recent, which is still ongoing).
-        double totalConsumed = 0.0;
-        int totalQtyDays = 0;
-
-        for (int i = 0; i < manual.length - 1; i++) {
-          final entry = manual[i];
-          if (entry.quantityPurchased == null) continue;
-
-          // End date: explicit finishedAt or next entry's start date
-          final endDate = entry.finishedAt ?? manual[i + 1].recordedAt;
-          final days = _daysBetween(entry.recordedAt, endDate);
-          if (days <= 0) continue;
-
-          // Resolve effective remaining (same logic as getPurchaseCycleStats)
-          final double effectiveRemaining;
-          if (entry.quantityRemaining != null) {
-            effectiveRemaining = entry.quantityRemaining!;
-          } else if (entry.quantityConsumed != null) {
-            effectiveRemaining =
-                (entry.quantityPurchased! - entry.quantityConsumed!)
-                    .clamp(0.0, entry.quantityPurchased!);
-          } else {
-            effectiveRemaining = 0.0;
-          }
-
-          final consumed = entry.quantityPurchased! - effectiveRemaining;
-          if (consumed > 0) {
-            totalConsumed += consumed;
-            totalQtyDays += days;
-          }
+        if (itemUpcoming != null) {
+          final key =
+              '${itemUpcoming.expectedDate.year}-${itemUpcoming.expectedDate.month.toString().padLeft(2, '0')}';
+          byMonth.putIfAbsent(key, () => []).add(itemUpcoming);
         }
 
-        // Use quantity-proportional estimate when data is available
-        int estimatedCycleDays;
-        double avgDailyUsage = 0;
-        if (totalQtyDays > 0 && lastEntry.quantityPurchased != null) {
-          avgDailyUsage = totalConsumed / totalQtyDays;
-          if (avgDailyUsage > 0) {
-            estimatedCycleDays =
-                (lastEntry.quantityPurchased! / avgDailyUsage).round();
-          } else {
-            estimatedCycleDays = _naiveAvgCycleDays(manual);
-          }
-        } else {
-          // Fallback: naive date-gap average
-          estimatedCycleDays = _naiveAvgCycleDays(manual);
-        }
+        // Sub-item entries — each sub-item gets its own prediction
+        final subItems = await _db.getSubItemsByItemId(item.id!);
+        for (final subItem in subItems) {
+          final subManual = history
+              .where((e) =>
+                  e.entryType == 'manual' && e.subItemId == subItem.id)
+              .toList()
+            ..sort((a, b) => a.recordedAt.compareTo(b.recordedAt));
 
-        // If the last purchase is already finished, it ran out on finishedAt —
-        // that's when it should have been repurchased.
-        DateTime expectedDate;
-        if (lastEntry.finishedAt != null) {
-          expectedDate = DateTime(
-            lastEntry.finishedAt!.year,
-            lastEntry.finishedAt!.month,
-            lastEntry.finishedAt!.day,
+          final subUpcoming = _buildUpcomingItem(
+            item: item,
+            subItemName: subItem.name,
+            manual: subManual,
+            todayDate: todayDate,
+            price: subItem.currentPrice,
           );
-        } else if (avgDailyUsage > 0 &&
-            lastEntry.quantityPurchased != null &&
-            lastEntry.quantityRemaining != null) {
-          // Checkpoint-based projection: use the known remaining quantity to
-          // project forward with the actual in-cycle usage rate.
-          final checkpointDate = lastEntry.remainingUpdatedAt != null
-              ? DateTime(
-                  lastEntry.remainingUpdatedAt!.year,
-                  lastEntry.remainingUpdatedAt!.month,
-                  lastEntry.remainingUpdatedAt!.day,
-                )
-              : lastPurchase;
-
-          final daysToCheckpoint = _daysBetween(lastPurchase, checkpointDate);
-          final consumedToCheckpoint =
-              lastEntry.quantityPurchased! - lastEntry.quantityRemaining!;
-          // Prefer in-cycle rate if derivable; fall back to historical average
-          final inCycleRate = (daysToCheckpoint > 0 && consumedToCheckpoint > 0)
-              ? consumedToCheckpoint / daysToCheckpoint
-              : avgDailyUsage;
-
-          final daysSinceCheckpoint = _daysBetween(checkpointDate, todayDate);
-          final projectedRemaining =
-              lastEntry.quantityRemaining! - (inCycleRate * daysSinceCheckpoint);
-
-          if (projectedRemaining <= 0) {
-            // Already run out — overdue, skip this item
-            continue;
+          if (subUpcoming != null) {
+            final key =
+                '${subUpcoming.expectedDate.year}-${subUpcoming.expectedDate.month.toString().padLeft(2, '0')}';
+            byMonth.putIfAbsent(key, () => []).add(subUpcoming);
           }
-
-          final daysUntilEmpty = (projectedRemaining / inCycleRate).ceil();
-          expectedDate = todayDate.add(Duration(days: daysUntilEmpty));
-        } else {
-          expectedDate = lastPurchase.add(Duration(days: estimatedCycleDays));
         }
-
-        // Skip items that are already overdue (handled by the overdue filter)
-        if (expectedDate.isBefore(todayDate)) continue;
-
-        final monthKey =
-            '${expectedDate.year}-${expectedDate.month.toString().padLeft(2, '0')}';
-
-        // Collect all occurrences of this item within the same month
-        final monthEnd = DateTime(expectedDate.year, expectedDate.month + 1, 0);
-        final List<DateTime> allDatesInMonth = [];
-        DateTime projected = expectedDate;
-        while (!projected.isAfter(monthEnd)) {
-          allDatesInMonth.add(projected);
-          projected = projected.add(Duration(days: estimatedCycleDays));
-        }
-
-        byMonth.putIfAbsent(monthKey, () => []).add(_UpcomingItem(
-              item: item,
-              expectedDate: expectedDate,
-              price: item.currentPrice,
-              allDatesInMonth: allDatesInMonth,
-            ));
       }
 
       final orderedKeys = byMonth.keys.toList()..sort();
@@ -614,7 +645,9 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            entry.item.name,
+                            entry.subItemName != null
+                                ? '${entry.item.name} · ${entry.subItemName}'
+                                : entry.item.name,
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 14,
@@ -763,14 +796,17 @@ class _UpcomingPurchasesScreenState extends State<UpcomingPurchasesScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              entry.item.name,
+                              entry.subItemName != null
+                                  ? '${entry.item.name} · ${entry.subItemName}'
+                                  : entry.item.name,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 14,
                                 color: AppColors.textPrimary,
                               ),
                             ),
-                            if (entry.item.description != null) ...[
+                            if (entry.subItemName == null &&
+                                entry.item.description != null) ...[
                               const SizedBox(height: 2),
                               Text(
                                 entry.item.description!,

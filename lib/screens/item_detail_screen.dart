@@ -64,7 +64,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
     }
 
     _tabController = TabController(
-      length: _subItems.length, // Only sub-item tabs
+      length: _subItems.length,
+      initialIndex: _selectedTabIndex,
       vsync: this,
     );
 
@@ -97,6 +98,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
       _subItemHistoryCache.clear();
       _subItemMonthlySpendingCache.clear();
 
+      int activeIndex = 0;
+
       // If there are sub-items, preload all sub-items data
       if (subItems.isNotEmpty) {
         // Preload all sub-items data in parallel
@@ -117,9 +120,21 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
 
         await Future.wait(futures);
 
-        // Use first sub-item's data
-        history = _subItemHistoryCache[0]!;
-        monthlySpending = _subItemMonthlySpendingCache[0]!;
+        // Find the sub-item with an active (ongoing) purchase and default to it
+        for (int i = 0; i < subItems.length; i++) {
+          final subHistory = _subItemHistoryCache[i]!;
+          final manual = subHistory
+              .where((e) => e.entryType == 'manual')
+              .toList()
+            ..sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
+          if (manual.isNotEmpty && manual.first.finishedAt == null) {
+            activeIndex = i;
+            break;
+          }
+        }
+
+        history = _subItemHistoryCache[activeIndex]!;
+        monthlySpending = _subItemMonthlySpendingCache[activeIndex]!;
       } else {
         // No sub-items, load parent item data
         history = await _databaseService.getPriceHistory(widget.item.id!,
@@ -143,6 +158,7 @@ class _ItemDetailScreenState extends State<ItemDetailScreen>
         _monthlySpending = monthlySpending;
         _monthlySpendingKeys = monthlySpending.keys.toList();
         _currentMonthIndex = 0;
+        _selectedTabIndex = subItems.isNotEmpty ? activeIndex : 0;
         _isLoading = false;
       });
 
