@@ -161,7 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
 
     try {
-      String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
+      String? selectedDirectory = await FilePicker.getDirectoryPath(
         dialogTitle: 'Select Auto-Backup Location',
       );
 
@@ -352,12 +352,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Text(
-                                      _autoBackupPath ?? 'Default (App Storage)',
+                                      _autoBackupPath ??
+                                          'Default (App Storage)',
                                       style: const TextStyle(fontSize: 13),
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const Icon(Icons.edit, size: 18, color: Colors.grey),
+                                  const Icon(Icons.edit,
+                                      size: 18, color: Colors.grey),
                                 ],
                               ),
                             ),

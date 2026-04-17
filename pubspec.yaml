@@ -14,11 +14,11 @@ dependencies:
   sqflite_sqlcipher: ^3.4.0
   flutter_secure_storage: ^10.0.0
   path: ^1.9.0
-  shared_preferences: ^2.5.3
+  shared_preferences: ^2.5.5
   fl_chart: ^0.68.0
   intl: ^0.20.2
   cupertino_icons: ^1.0.8
-  file_picker: ^10.3.6
+  file_picker: ^11.0.2
   path_provider: ^2.1.5
   permission_handler: ^12.0.1
   encrypt: ^5.0.3

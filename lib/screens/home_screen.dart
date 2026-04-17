@@ -28,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
       {}; // Map of item ID to purchase cycle progress (0.0–1.0+)
   bool _isLoading = true;
   int _summaryRefreshKey = 0;
-  ItemFilter _currentFilter = ItemFilter.all;
+  ItemFilter _currentFilter = ItemFilter.active;
 
   @override
   void initState() {

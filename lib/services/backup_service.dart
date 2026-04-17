@@ -49,7 +49,9 @@ class BackupService {
     final key = await _getBackupKey();
     final ivBytes = Uint8List(16);
     final rng = Random.secure();
-    for (int i = 0; i < 16; i++) ivBytes[i] = rng.nextInt(256);
+    for (int i = 0; i < 16; i++) {
+      ivBytes[i] = rng.nextInt(256);
+    }
     final iv = enc.IV(ivBytes);
     final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
     final encrypted = encrypter.encrypt(plaintext, iv: iv);
@@ -88,7 +90,8 @@ class BackupService {
   }
 
   /// Validate that [map] contains [required] string keys with non-null values.
-  void _requireFields(Map<dynamic, dynamic> map, List<String> required, String context) {
+  void _requireFields(
+      Map<dynamic, dynamic> map, List<String> required, String context) {
     for (final key in required) {
       if (!map.containsKey(key) || map[key] == null) {
         throw FormatException('Invalid backup: missing "$key" in $context');
@@ -102,7 +105,8 @@ class BackupService {
       throw const FormatException('Invalid backup file: missing version');
     }
     if (data['version'] is! String) {
-      throw const FormatException('Invalid backup file: version must be a string');
+      throw const FormatException(
+          'Invalid backup file: version must be a string');
     }
 
     // Clear existing data
@@ -110,11 +114,14 @@ class BackupService {
 
     // Import items first (parent entities)
     if (data['items'] != null) {
-      if (data['items'] is! List) throw const FormatException('Invalid backup: items must be a list');
+      if (data['items'] is! List) {
+        throw const FormatException('Invalid backup: items must be a list');
+      }
       for (final raw in data['items'] as List) {
         if (raw is! Map) continue;
         try {
-          _requireFields(raw, ['name', 'current_price', 'created_at', 'updated_at'], 'items');
+          _requireFields(raw,
+              ['name', 'current_price', 'created_at', 'updated_at'], 'items');
           final item = Item.fromMap(Map<String, dynamic>.from(raw));
           final db = await _dbService.database;
           await db.insert('items', item.toMap());
@@ -126,11 +133,16 @@ class BackupService {
 
     // Import sub-items second (child entities of items)
     if (data['sub_items'] != null) {
-      if (data['sub_items'] is! List) throw const FormatException('Invalid backup: sub_items must be a list');
+      if (data['sub_items'] is! List) {
+        throw const FormatException('Invalid backup: sub_items must be a list');
+      }
       for (final raw in data['sub_items'] as List) {
         if (raw is! Map) continue;
         try {
-          _requireFields(raw, ['item_id', 'name', 'current_price', 'created_at', 'updated_at'], 'sub_items');
+          _requireFields(
+              raw,
+              ['item_id', 'name', 'current_price', 'created_at', 'updated_at'],
+              'sub_items');
           final subItem = SubItem.fromMap(Map<String, dynamic>.from(raw));
           final db = await _dbService.database;
           await db.insert('sub_items', subItem.toMap());
@@ -142,11 +154,15 @@ class BackupService {
 
     // Import price history last (references both items and sub-items)
     if (data['price_history'] != null) {
-      if (data['price_history'] is! List) throw const FormatException('Invalid backup: price_history must be a list');
+      if (data['price_history'] is! List) {
+        throw const FormatException(
+            'Invalid backup: price_history must be a list');
+      }
       for (final raw in data['price_history'] as List) {
         if (raw is! Map) continue;
         try {
-          _requireFields(raw, ['item_id', 'price', 'recorded_at', 'entry_type'], 'price_history');
+          _requireFields(raw, ['item_id', 'price', 'recorded_at', 'entry_type'],
+              'price_history');
           final db = await _dbService.database;
           await db.insert('price_history', Map<String, dynamic>.from(raw));
         } catch (_) {
@@ -222,7 +238,7 @@ class BackupService {
       final filename = 'cocu_backup_$timestamp.json';
 
       // Let user choose directory
-      String? selectedDirectory = await FilePicker.platform.getDirectoryPath(
+      String? selectedDirectory = await FilePicker.getDirectoryPath(
         dialogTitle: 'Select Backup Location',
       );
 
@@ -247,7 +263,7 @@ class BackupService {
   Future<void> restoreFromFile() async {
     try {
       // Let user pick backup file
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      FilePickerResult? result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
       );
